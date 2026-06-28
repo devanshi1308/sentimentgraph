@@ -1,0 +1,11 @@
+# RecBole + RecBole-GNN env (pinned)
+# PyG arrives as a RecBole-GNN dependency; we do not write custom PyG yet.
+# Pin exact versions on first clean install for reproducibility.
+
+# recbole==
+# recbole-gnn==
+# torch==
+# torch-geometric==
+# numpy==
+# pandas==
+# pyyaml==

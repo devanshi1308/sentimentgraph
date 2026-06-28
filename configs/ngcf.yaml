@@ -1,0 +1,20 @@
+# NGCF baseline (RecBole-GNN) — one YAML per run; holds seed + metrics
+model: NGCF
+dataset: video_games
+data_path: data/processed/
+
+seed: 2020
+reproducibility: true
+
+embedding_size: 64
+hidden_size_list: [64, 64, 64]
+node_dropout: 0.0
+message_dropout: 0.1
+reg_weight: 1e-5
+train_batch_size: 2048
+learning_rate: 0.001
+epochs: 300
+
+metrics: [Recall, NDCG]
+topk: [10, 20]
+valid_metric: NDCG@10

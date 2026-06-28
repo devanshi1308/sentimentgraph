@@ -1,0 +1,8 @@
+# PyABSA env (pinned, separate)
+# Kept apart from the recommender env: if PyABSA and RecBole share an env they fight.
+# Pin exact versions on first clean install for reproducibility.
+
+# pyabsa==
+# torch==
+# transformers==
+# pandas==

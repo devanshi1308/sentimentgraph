@@ -1,0 +1,21 @@
+# raw data and large model files
+data/raw/
+*.parquet
+*.ckpt
+*.pt
+*.pth
+*.bin
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env-rec/
+env-absa/
+.ipynb_checkpoints/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/

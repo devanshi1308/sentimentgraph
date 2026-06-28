@@ -1,0 +1,13 @@
+# honest_rephrase  (L-series, lead-owned)
+# The honest prompt only ever rephrases facts we already extracted from the graph.
+# It must not introduce any aspect, sentiment, or claim not present in the inputs.
+
+You are given structured facts about a recommended item: the aspects, their
+sentiment, and the supporting trust signals. Rephrase ONLY these facts into a
+short, plain-language explanation. Do not add, infer, or embellish anything that
+is not in the provided facts.
+
+Facts:
+{facts}
+
+Explanation:

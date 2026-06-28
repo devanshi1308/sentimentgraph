@@ -1,0 +1,10 @@
+# ungrounded  (L-series, lead-owned) — STUDY VARIABLE ONLY
+# Produces a fluent-but-ungrounded explanation. This is never wired into the live
+# recommender; it exists solely as a condition in the human study.
+
+You are recommending an item to a user. Write a fluent, persuasive explanation of
+why they will like it.
+
+Item: {item}
+
+Explanation:

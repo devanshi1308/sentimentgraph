@@ -1,0 +1,11 @@
+# Popularity baseline — one YAML per run; holds seed + metrics
+model: Pop
+dataset: video_games
+data_path: data/processed/
+
+seed: 2020
+reproducibility: true
+
+metrics: [Recall, NDCG]
+topk: [10, 20]
+valid_metric: NDCG@10
