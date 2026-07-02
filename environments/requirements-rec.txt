@@ -19,12 +19,12 @@ Markdown==3.10.2
 MarkupSafe==3.0.3
 mpmath==1.3.0
 msgpack==1.2.1
-narwhals==2.22.1
-networkx==2.8.8
+narwhals==2.23.0
+networkx==3.6.1
 numpy==1.26.4
 packaging==26.2
-pandas==2.3.3
-pillow==12.2.0
+pandas==2.1.4
+pillow==12.3.0
 plotly==6.8.0
 protobuf==7.35.1
 psutil==7.2.2
@@ -37,7 +37,7 @@ referencing==0.37.0
 requests==2.34.2
 rpds-py==2026.6.3
 scikit-learn==1.9.0
-scipy==1.17.1
+scipy==1.11.4
 six==1.17.0
 sympy==1.14.0
 tabulate==0.10.0
@@ -46,7 +46,7 @@ tensorboard-data-server==0.7.2
 texttable==1.7.0
 thop==0.1.1.post2209072238
 threadpoolctl==3.6.0
-torch==2.3.1
+torch==2.12.1
 tqdm==4.68.3
 typing_extensions==4.15.0
 tzdata==2026.2
