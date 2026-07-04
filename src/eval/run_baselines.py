@@ -3,13 +3,6 @@
 Runs each baseline through the one RecBole/RecBole-GNN harness using the configs/
 YAMLs, and records Recall@K and NDCG@K to results/baselines/. Every run traces
 back to a config file and a seed.
-"""
-
-"""Run a single RecBole baseline model from a config file.
-
-Usage:
-    python -m src.eval.run_baselines --config configs/popularity.yaml
-    python -m src.eval.run_baselines --config configs/bpr.yaml
 
 Writes Recall@K / NDCG@K results to results/baselines/<model>.csv,
 appending to a shared summary table so every run traces back to its
@@ -27,6 +20,8 @@ from recbole.model.general_recommender.pop import Pop
 from recbole.model.general_recommender.bpr import BPR
 from recbole.trainer import Trainer
 from recbole.utils import init_seed, init_logger
+from recbole.model.general_recommender.lightgcn import LightGCN   # add this
+from recbole.model.general_recommender.ngcf import NGCF
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIR = REPO_ROOT / "results" / "baselines"
@@ -37,6 +32,12 @@ MODEL_CLASSES = {
     "BPR": BPR,
 }
 
+MODEL_CLASSES = {
+    "Pop": Pop,
+    "BPR": BPR,
+    "LightGCN": LightGCN,
+    "NGCF": NGCF,
+}
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
