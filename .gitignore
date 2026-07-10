@@ -19,3 +19,8 @@ env-absa/
 .DS_Store
 .idea/
 .vscode/
+checkpoints/
+checkpoints.json
+log/
+log_tensorboard/
+*.result.json

@@ -1,8 +1,10 @@
 """PyABSA -> aspect/sentiment table.
 
-Runs in the ABSA env only. Applies PyABSA over the review text and writes an
-aspect→sentiment table to a file in data/. Never imports from the recommender
-side; the two halves meet only through files in data/.
+Runs in the ABSA env only. Applies PyABSA over ALL reviews belonging to
+the graph's 5-core filtered users (899,964 reviews) — full-scale run,
+not the 300-review sanity sample. Batched + checkpointed since this is
+a long-running job. Never imports from the recommender side; the two
+halves meet only through files in data/.
 """
 
 # Workaround: metric_visualizer calls update_checker.UpdateChecker.check()
@@ -17,75 +19,94 @@ from pathlib import Path
 import pandas as pd
 from pyabsa import AspectTermExtraction as ATEPC
 
-from src.sentiment.aspects import ASPECTS
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REVIEWS_PARQUET = REPO_ROOT / "data" / "raw" / "reviews_video_games.parquet"
-OUTPUT_PATH = REPO_ROOT / "data" / "interim" / "absa_sample.csv"
+INTER_PATH = REPO_ROOT / "data" / "processed" / "video_games" / "video_games.inter"
+OUTPUT_PATH = REPO_ROOT / "data" / "interim" / "absa_full.csv"
+CHECKPOINT_PATH = REPO_ROOT / "data" / "interim" / "absa_full_progress.txt"
 
-SAMPLE_SIZE = 300
+BATCH_SIZE = 32
 
 
-def load_sample() -> pd.DataFrame:
-    reviews = pd.read_parquet(REVIEWS_PARQUET, columns=["user_id", "parent_asin", "text"])
+def load_graph_users() -> set:
+    inter = pd.read_csv(INTER_PATH, sep="\t")
+    inter.columns = [c.split(":")[0] for c in inter.columns]
+    return set(inter["user_id"].unique())
+
+
+def load_target_reviews(user_ids: set) -> pd.DataFrame:
+    reviews = pd.read_parquet(
+        REVIEWS_PARQUET, columns=["user_id", "parent_asin", "text"]
+    )
+    reviews = reviews[reviews["user_id"].isin(user_ids)]
     reviews = reviews.dropna(subset=["text"])
     reviews = reviews[reviews["text"].str.len() > 20]
-    return reviews.sample(n=SAMPLE_SIZE, random_state=2020).reset_index(drop=True)
+    return reviews.reset_index(drop=True)
 
 
-def run_absa(sample: pd.DataFrame) -> pd.DataFrame:
-    extractor = ATEPC.AspectExtractor("multilingual", auto_device=True)
-
-    rows = []
-    for i, row in sample.iterrows():
-        result = extractor.predict(row["text"], print_result=False)
-        aspects = result.get("aspect", [])
-        sentiments = result.get("sentiment", [])
-        for aspect, sentiment in zip(aspects, sentiments):
-            rows.append({
-                "review_index": i,
-                "user_id": row["user_id"],
-                "item_id": row["parent_asin"],
-                "aspect": aspect,
-                "sentiment": sentiment,
-                "text_snippet": row["text"][:150],
-            })
-        if i % 50 == 0:
-            print(f"  ...processed {i}/{len(sample)} reviews")
-
-    return pd.DataFrame(rows)
+def get_start_index() -> int:
+    if CHECKPOINT_PATH.exists():
+        return int(CHECKPOINT_PATH.read_text().strip())
+    return 0
 
 
-def filter_to_fixed_aspects(results: pd.DataFrame) -> pd.DataFrame:
-    mask = results["aspect"].str.lower().apply(
-        lambda a: any(fixed in a for fixed in ASPECTS)
-    )
-    return results[mask].reset_index(drop=True)
+def save_checkpoint(index: int) -> None:
+    CHECKPOINT_PATH.write_text(str(index))
+
+
+def run_absa_batched(reviews: pd.DataFrame, extractor) -> None:
+    start = get_start_index()
+    print(f"Resuming from row {start:,} / {len(reviews):,}")
+
+    write_header = not OUTPUT_PATH.exists() or start == 0
+
+    for batch_start in range(start, len(reviews), BATCH_SIZE):
+        batch = reviews.iloc[batch_start:batch_start + BATCH_SIZE]
+        texts = batch["text"].tolist()
+
+        results = extractor.predict(texts, print_result=False)
+        if not isinstance(results, list):
+            results = [results]
+
+        rows = []
+        for (_, row), result in zip(batch.iterrows(), results):
+            aspects = result.get("aspect", [])
+            sentiments = result.get("sentiment", [])
+            for aspect, sentiment in zip(aspects, sentiments):
+                rows.append({
+                    "user_id": row["user_id"],
+                    "item_id": row["parent_asin"],
+                    "aspect": aspect,
+                    "sentiment": sentiment,
+                })
+
+        if rows:
+            pd.DataFrame(rows).to_csv(
+                OUTPUT_PATH, mode="a", header=write_header, index=False
+            )
+            write_header = False
+
+        save_checkpoint(batch_start + BATCH_SIZE)
+
+        if batch_start % (BATCH_SIZE * 50) == 0:
+            print(f"  ...processed {batch_start:,} / {len(reviews):,} reviews")
 
 
 def main() -> None:
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    print("Loading graph users...")
+    users = load_graph_users()
 
-    print("Sampling reviews...")
-    sample = load_sample()
+    print("Loading target reviews (5-core filtered population only)...")
+    reviews = load_target_reviews(users)
+    print(f"  {len(reviews):,} reviews to process")
 
-    print("Running PyABSA...")
-    raw_results = run_absa(sample)
+    print("Loading PyABSA model...")
+    extractor = ATEPC.AspectExtractor("multilingual", auto_device=True)
 
-    print(f"\nRaw aspect mentions extracted: {len(raw_results)}")
-    results = filter_to_fixed_aspects(raw_results)
-    print(f"Mentions matching fixed ASPECTS list: {len(results)}")
+    print("Running batched extraction (checkpointed — safe to interrupt/resume)...")
+    run_absa_batched(reviews, extractor)
 
-    results.to_csv(OUTPUT_PATH, index=False)
-    print(f"Wrote {len(results)} aspect-sentiment pairs to {OUTPUT_PATH}")
-
-    print("\n=== Coverage per fixed aspect ===")
-    for aspect in ASPECTS:
-        count = (results["aspect"].str.lower().str.contains(aspect)).sum()
-        print(f"  {aspect}: {count} mentions")
-
-    print("\n=== First 20 examples for eyeballing ===")
-    print(results.head(20).to_string(index=False))
+    print(f"\nDone. Results in {OUTPUT_PATH}")
 
 
 if __name__ == "__main__":
