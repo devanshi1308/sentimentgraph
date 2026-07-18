@@ -8,7 +8,7 @@ import networkx as nx
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GRAPH_PATH = REPO_ROOT / "data" / "processed" / "video_games" / "graph.gpickle"
-OUTPUT_PATH = REPO_ROOT / "results" / "graph_sentiment_edges.png"
+OUTPUT_PATH = REPO_ROOT / "results" / "figures" / "graph_sentiment_edges.png"
 
 
 def main() -> None:
@@ -33,7 +33,7 @@ def main() -> None:
     pos = nx.spring_layout(subG, seed=1, k=0.8)
     nx.draw(subG, pos, node_color=colors, node_size=400, with_labels=True,
             font_size=6, edge_color="gray", arrows=True, arrowsize=10)
-    plt.title("The 4 sentiment/aspect edges and their connected users/items")
+    plt.title(f"Sentiment/aspect edges and their connected users/items (n={subG.number_of_edges()})")
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(OUTPUT_PATH, dpi=150, bbox_inches="tight")
     print(f"Saved to {OUTPUT_PATH}")
