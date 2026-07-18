@@ -18,19 +18,14 @@ from recbole.config import Config
 from recbole.data import create_dataset, data_preparation
 from recbole.model.general_recommender.pop import Pop
 from recbole.model.general_recommender.bpr import BPR
+from recbole.model.general_recommender.lightgcn import LightGCN
+from recbole.model.general_recommender.ngcf import NGCF
 from recbole.trainer import Trainer
 from recbole.utils import init_seed, init_logger
-from recbole.model.general_recommender.lightgcn import LightGCN   # add this
-from recbole.model.general_recommender.ngcf import NGCF
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIR = REPO_ROOT / "results" / "baselines"
 SUMMARY_PATH = RESULTS_DIR / "summary.csv"
-
-MODEL_CLASSES = {
-    "Pop": Pop,
-    "BPR": BPR,
-}
 
 MODEL_CLASSES = {
     "Pop": Pop,
