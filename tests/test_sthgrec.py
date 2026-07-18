@@ -474,6 +474,153 @@ def test_end_to_end_smoke(tmp_path):
     assert expected_metric_keys.issubset({k.lower() for k in row})
 
 
+# ---------------------------------------------------------------------------
+# h. YAML-WINS: ablation flags in YAML actually reach the model (BUG-1 fix)
+# ---------------------------------------------------------------------------
+
+def test_yaml_ablation_flags_win(tmp_path):
+    """YAML use_sentiment_edges: false must reach Config and the built model.
+
+    This test exercises the REAL file path through load_config() — the same
+    function main() now calls — and asserts three things:
+      (a) config["use_sentiment_edges"] is False (YAML value won over the
+          True default in _CUSTOM_KEYS; would fail against the pre-fix code
+          because RecBole 1.2.1 config_dict overrides config_file_list).
+      (b) The built GraphTensors has adj_sentiment = None (no sentiment adj).
+      (c) The STHGRec model's _has_sentiment is False.
+
+    Pre-fix failure mode: with config_dict=_CUSTOM_KEYS (all defaults), RecBole
+    would override the YAML value, reporting use_sentiment_edges=True even when
+    the YAML said false — exactly the BUG-1 scenario.
+    """
+    import tempfile
+    import yaml as _yaml
+
+    from recbole.config import Config
+    from recbole.data import create_dataset, data_preparation
+    from recbole.utils import init_seed
+    from src.models.sthgrec import STHGRec
+    from src.eval.run_sthgrec import load_config, build_model
+
+    # ------------------------------------------------------------------
+    # Build a minimal synthetic dataset so RecBole can create_dataset().
+    # ------------------------------------------------------------------
+    ds_dir = tmp_path / "dataset" / "ab_toy"
+    ds_dir.mkdir(parents=True, exist_ok=True)
+
+    rng = np.random.default_rng(42)
+    users = [f"u{k}" for k in range(20)]
+    items = [f"i{k}" for k in range(15)]
+
+    pairs, ts = [], 1
+    for u in users:
+        chosen = rng.choice(len(items), size=6, replace=False)
+        for c in chosen:
+            pairs.append((u, items[c], ts)); ts += 1
+
+    df_all = pd.DataFrame(pairs, columns=["u", "i", "t"])
+    def _write_split(rows_df, split_name):
+        out = pd.DataFrame({
+            "user_id:token": rows_df["u"],
+            "item_id:token": rows_df["i"],
+            "rating:float": 5.0,
+            "timestamp:float": rows_df["t"].astype(float),
+        })
+        out.to_csv(ds_dir / f"ab_toy.{split_name}.inter", sep="\t", index=False)
+
+    for u, g in df_all.groupby("u"):
+        g = g.sort_values("t")
+        _write_split(g.iloc[:4], "train")
+    # write valid/test (one row each per user, reuse last two rows)
+    va_rows, te_rows = [], []
+    for u, g in df_all.groupby("u"):
+        g = g.sort_values("t")
+        va_rows.append(g.iloc[4:5]); te_rows.append(g.iloc[5:6])
+    _write_split(pd.concat(va_rows).reset_index(drop=True), "valid")
+    _write_split(pd.concat(te_rows).reset_index(drop=True), "test")
+
+    train_inter = ds_dir / "ab_toy.train.inter"
+
+    # Sentiment CSV (present, but will be disabled via YAML flag).
+    sent_path = tmp_path / "absa.csv"
+    _write_sentiment(sent_path, [
+        ("u0", "i0", "gameplay", "Positive"),
+        ("u1", "i1", "price", "Negative"),
+    ])
+
+    id_map_path = tmp_path / "idmap.json"
+
+    # ------------------------------------------------------------------
+    # Write a temp YAML with use_sentiment_edges: false pointing at the
+    # synthetic files.
+    # ------------------------------------------------------------------
+    yaml_content = {
+        "model": "STHGRec",
+        "dataset": "ab_toy",
+        "data_path": str(tmp_path / "dataset"),
+        "seed": 2020,
+        "reproducibility": True,
+        "benchmark_filename": ["train", "valid", "test"],
+        "eval_args": {
+            "mode": "full",
+            "split": {"RS": [0.8, 0.1, 0.1]},
+            "order": "TO",
+            "group_by": "user",
+        },
+        "embedding_size": 8,
+        "n_layers": 2,
+        "reg_weight": 1e-4,
+        "train_batch_size": 64,
+        "learning_rate": 0.01,
+        "epochs": 1,
+        # THE FLAG UNDER TEST — must survive into the built model:
+        "use_sentiment_edges": False,
+        "use_trust_edges": False,
+        "graph_inter_csv": str(train_inter),
+        "graph_sentiment_csv": str(sent_path),
+        "graph_trust_csv": None,
+        "graph_id_map_json": str(id_map_path),
+        "metrics": ["Recall", "NDCG"],
+        "topk": [10, 20],
+        "valid_metric": "NDCG@10",
+        "device": "cpu",
+    }
+    yaml_path = tmp_path / "ablation_test.yaml"
+    with open(yaml_path, "w") as f:
+        _yaml.dump(yaml_content, f)
+
+    # ------------------------------------------------------------------
+    # Call the SAME load_config() that main() calls (identical code path).
+    # ------------------------------------------------------------------
+    config = load_config(yaml_path)
+
+    # (a) YAML ablation flag reaches Config.
+    assert config["use_sentiment_edges"] is False, (
+        f"Expected False from YAML, got {config['use_sentiment_edges']!r}. "
+        "This indicates BUG-1 is NOT fixed: config_dict default (True) is "
+        "overriding the YAML value."
+    )
+
+    # (b) & (c) Build the model via the same build_model() path and verify the
+    # sentiment adjacency and model flag are also False/None.
+    init_seed(config["seed"], config["reproducibility"])
+    dataset = create_dataset(config)
+    _, valid_data, _ = data_preparation(config, dataset)
+
+    model, gt = build_model(config, dataset)
+
+    # (b) GraphTensors has no sentiment adjacency.
+    assert gt.adj_sentiment is None, (
+        f"Expected adj_sentiment=None when use_sentiment_edges=False, "
+        f"got {type(gt.adj_sentiment)}"
+    )
+
+    # (c) Model's internal flag is False.
+    assert model._has_sentiment is False, (
+        f"Expected model._has_sentiment=False, got {model._has_sentiment!r}"
+    )
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-x", "-q"]))

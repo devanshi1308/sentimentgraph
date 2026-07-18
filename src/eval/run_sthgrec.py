@@ -119,6 +119,32 @@ def append_summary(row: dict) -> None:
     combined.to_csv(SUMMARY_PATH, index=False)
 
 
+def load_config(config_path: Path) -> "Config":
+    """Build a RecBole Config where YAML ablation flags win over code defaults.
+
+    RecBole 1.2.1 merge order: config_dict values OVERRIDE config_file_list
+    values — the opposite of what a comment in the old code claimed. To ensure
+    YAML ablation flags (e.g. use_sentiment_edges: false) reach the model, we
+    manually extract any custom keys present in the YAML and fold them into
+    config_dict on top of the defaults. YAML-defined custom values therefore
+    always win; defaults only fill keys absent from the YAML.
+    """
+    with open(config_path) as f:
+        raw_yaml = yaml.safe_load(f) or {}
+
+    # Extract whichever of the custom keys the YAML explicitly sets.
+    yaml_custom = {k: raw_yaml[k] for k in _CUSTOM_KEYS if k in raw_yaml}
+
+    # YAML values override defaults (right-side wins in {**a, **b}).
+    merged_custom = {**_CUSTOM_KEYS, **yaml_custom}
+
+    return Config(
+        model=STHGRec,
+        config_file_list=[str(config_path)],
+        config_dict=merged_custom,
+    )
+
+
 def main() -> None:
     args = parse_args()
     config_path = REPO_ROOT / args.config if not Path(args.config).is_absolute() else Path(args.config)
@@ -127,13 +153,9 @@ def main() -> None:
         raw_config = yaml.safe_load(f)
     model_name = raw_config.get("model", "STHGRec")
 
-    # Register custom keys so RecBole's Config does not choke on unknowns.
-    config = Config(
-        model=STHGRec,
-        config_file_list=[str(config_path)],
-        config_dict=_CUSTOM_KEYS,
-    )
-    # config_file_list overrides config_dict, so YAML values win where present.
+    # YAML custom-key values win: load_config() merges them above _CUSTOM_KEYS
+    # defaults before constructing Config (see load_config docstring).
+    config = load_config(config_path)
 
     init_seed(config["seed"], config["reproducibility"])
     init_logger(config)

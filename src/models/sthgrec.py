@@ -111,6 +111,16 @@ class STHGRec(GeneralRecommender):
 
         self.apply(xavier_uniform_initialization)
         # Zero the PAD/unseen slot AFTER init so unseen ids contribute nothing.
+        # Two invariants keep this slot at zero throughout training:
+        #   (1) The PAD slot (index n_graph_nodes) is never included in the
+        #       sparse adjacency indices, so it receives no aggregated message
+        #       and accumulates zero MF gradient from the BPR loss.
+        #   (2) The L2 reg term (EmbLoss) calls embedding(u_nodes) for training
+        #       nodes only; the PAD slot's embedding is exactly zero, so its
+        #       L2 gradient is also zero (d/dx ||x||^2 at x=0 is 0).
+        # If either invariant breaks — e.g. adjacency accidentally indexes the
+        # PAD slot, or reg_loss is changed to include all embeddings — this slot
+        # will drift nonzero and unseen-id scoring will silently change.
         with torch.no_grad():
             self.embedding.weight[self._pad_slot].zero_()
         self.other_parameter_name = ["restore_user_e", "restore_item_e"]

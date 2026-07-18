@@ -164,6 +164,16 @@ def build_id_maps(
     Users/items come from the TRAIN interactions (leakage guard). Aspects come
     from the sentiment file's aspect column, sorted lexicographically. Sorting
     the *raw* ids removes any dependence on CSV row order or graph iteration.
+
+    Deliberate deviation from STHGREC_DESIGN.md §1.1 (CANONICAL_ASPECTS list):
+    The aspect vocabulary is derived from the observed aspects in the ABSA file
+    rather than from a hardcoded CANONICAL_ASPECTS constant. This is intentional:
+    the normalizer (src/sentiment/normalize_aspects.py) guarantees the file only
+    contains canonical aspects, so the observed set is always a subset of the
+    canonical list. Deriving from the file means the vocabulary automatically
+    shrinks if aspect coverage changes after data curation — no code change
+    required. The JSON contract (id_map_json) makes the mapping stable across
+    ablation runs regardless of which aspects are actually present.
     """
     user_raw = sorted(str(u) for u in interactions["user_id"].unique())
     item_raw = sorted(str(i) for i in interactions["item_id"].unique())
@@ -413,7 +423,43 @@ def build_graph_tensors(
     # available) sentiment file if a JSON contract is provided; otherwise from
     # whatever sentiment we loaded.
     if id_maps is None and id_map_json is not None and Path(id_map_json).exists():
-        id_maps = IdMaps.from_json(Path(id_map_json))
+        loaded = IdMaps.from_json(Path(id_map_json))
+        # Assert the persisted map matches the current data (STHGREC_DESIGN.md §1.1
+        # "asserted-equal on load"). A mismatch means the JSON is stale and must be
+        # regenerated (delete the file and rerun to refresh).
+        #
+        # User/item counts are always checked against the interaction file (the
+        # definitive source). Aspects are checked against the sentiment file only
+        # when a sentiment CSV is explicitly provided — passing sentiment_csv=None
+        # is a valid ablation call that intentionally omits sentiment; we cannot
+        # infer aspects from a missing file so that dimension is skipped.
+        aspect_src_for_check = load_sentiment(sentiment_csv) if sentiment_csv is not None else None
+        fresh = build_id_maps(
+            interactions,
+            aspect_src_for_check if aspect_src_for_check is not None else pd.DataFrame(columns=["user_id", "item_id", "aspect", "sentiment"]),
+            source=str(Path(inter_csv).name),
+        )
+        mismatches = []
+        if loaded.n_users != fresh.n_users:
+            mismatches.append(f"n_users: stored={loaded.n_users} current={fresh.n_users}")
+        if loaded.n_items != fresh.n_items:
+            mismatches.append(f"n_items: stored={loaded.n_items} current={fresh.n_items}")
+        if set(loaded.user_id2idx.keys()) != set(fresh.user_id2idx.keys()):
+            mismatches.append("user id lists differ")
+        if set(loaded.item_id2idx.keys()) != set(fresh.item_id2idx.keys()):
+            mismatches.append("item id lists differ")
+        # Aspect check only when we have a sentiment file to compare against.
+        if aspect_src_for_check is not None and len(aspect_src_for_check):
+            if loaded.n_aspects != fresh.n_aspects:
+                mismatches.append(f"n_aspects: stored={loaded.n_aspects} current={fresh.n_aspects}")
+            if set(loaded.aspect2idx.keys()) != set(fresh.aspect2idx.keys()):
+                mismatches.append("aspect id lists differ")
+        if mismatches:
+            raise ValueError(
+                f"stale id map, delete to regenerate: {id_map_json} — "
+                + "; ".join(mismatches)
+            )
+        id_maps = loaded
     if id_maps is None:
         # Build aspect map from the on-disk sentiment file regardless of the
         # ablation, so user/item/aspect index spaces are stable run-to-run.
