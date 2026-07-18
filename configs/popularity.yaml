@@ -6,6 +6,20 @@ data_path: data/processed/
 seed: 2020
 reproducibility: true
 
+# Use the official 5-core timestamp benchmark split verbatim. RecBole loads
+# video_games.{train,valid,test}.inter directly (one file per suffix, in this
+# order) and partitions by file size in Dataset.build(), which returns early and
+# BYPASSES eval_args' split/order/group_by entirely. Only eval_args.mode still
+# applies (full-ranking evaluation over all items). See build_atomic.py.
+benchmark_filename: [train, valid, test]
+eval_args:
+  mode: full          # full-ranking over the whole item set (the split itself
+                      # comes from benchmark_filename, so split/order/group_by
+                      # below are inert but kept explicit for readers)
+  split: {'RS': [0.8, 0.1, 0.1]}
+  order: TO
+  group_by: user
+
 metrics: [Recall, NDCG]
 topk: [10, 20]
 valid_metric: NDCG@10
