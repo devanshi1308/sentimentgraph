@@ -71,6 +71,14 @@ official split file sizes, and numbers are stable across reruns with `seed 2020`
 
 ## 🔴 2. RecBole-GNN and PyTorch Geometric are not installed
 
+> **STATUS: ✅ RESOLVED (prep phase; Muaaz sign-off 2026-07-18)** — investigation
+> (`HARNESS_DECISION.md`) found RecBole-GNN unmaintained (last commit 2023-10), not on
+> PyPI, and pinned to `recbole==1.1.1` vs our locked `1.2.1`. **Decision: Option B** —
+> baselines stay on vanilla RecBole; `torch-geometric==2.6.1` (pure-Python wheel) is
+> pinned for use inside `sthgrec.py` only; PRD §2 amended accordingly. Custom
+> `torch.sparse` (Option C) is the sanctioned fallback. Trust representation (fix #4)
+> decided the same day: **Option 4A** (propagation weight; `STHGREC_DESIGN.md` §3).
+
 **Where:** `environments/requirements-rec.txt` (only `recbole==1.2.1`);
 `src/eval/run_baselines.py` imports `LightGCN`/`NGCF` from
 `recbole.model.general_recommender`.
@@ -144,6 +152,13 @@ the ABSA rows, and the graph's aspect nodes reflect the full aspect vocabulary.
 ---
 
 ## 🟠 4. Trust "edges" are node attributes, and the committed graph has none
+
+> **STATUS: 🟢 DECIDED (Muaaz sign-off 2026-07-18), implementation lands in P4** —
+> **Option 4A**: trust enters ST-HGRec as a propagation weight scaling the user's
+> interaction edges (no fabricated social graph; zeroes cleanly under
+> `use_trust_edges` for ablations; citable in honest explanations). Analysis in
+> `STHGREC_DESIGN.md` §3. The graph-side plumbing (trust CSV → node attr) was wired
+> in P1; the full-scale `trust_applied > 0` check runs in P2.
 
 **Where:** `src/graph/build_graph.py` (`build_graph`, trust block);
 `src/data/trust_signals.py` output `data/interim/trust_signals.csv` (absent).

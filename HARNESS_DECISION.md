@@ -63,7 +63,12 @@ Accepted PRD §2 amendment text (applies on sign-off):
 
 ## Status
 
-- [ ] Muaaz sign-off: harness option (B recommended / C fallback / A)
-- [ ] Muaaz sign-off: trust representation (4A recommended — see `STHGREC_DESIGN.md` §3)
-- On sign-off: add the chosen pins to `requirements-rec.txt`, apply the PRD amendment
-  note here and in `fixes.md` #2, and unblock P4 T4.2/T4.3.
+- [x] **Muaaz signed off (2026-07-18): Option B** — vanilla RecBole harness, pure PyG
+  inside ST-HGRec only; Option C stays the sanctioned fallback. The PRD §2 amendment
+  above is now in force.
+- [x] **Muaaz signed off (2026-07-18): trust Option 4A** — trust as a propagation
+  weight on the user's interaction edges (see `STHGREC_DESIGN.md` §3).
+- [x] Pins applied to `requirements-rec.txt`: `torch-geometric==2.6.1` + transitives
+  (aiohttp, aiohappyeyeballs, multidict, propcache, yarl); full file re-resolves clean.
+- P4 T4.2/T4.3 are unblocked. Remaining de-risk step 1 (runtime import of PyG on
+  torch 2.5.1 on both machines) executes at the start of P2/P4.
