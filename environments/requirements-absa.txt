@@ -1,5 +1,7 @@
 # Minimal ABSA environment
+pandas==2.3.3
 pyabsa==2.4.2
+pyarrow==25.0.0
 torch==2.3.1
 transformers==4.57.6
-pandas==2.3.3
+update-checker==1.0.0
