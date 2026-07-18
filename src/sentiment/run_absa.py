@@ -1,10 +1,20 @@
-"""PyABSA -> aspect/sentiment table.
+"""PyABSA -> raw open-vocabulary aspect/sentiment table.
 
 Runs in the ABSA env only. Applies PyABSA over ALL reviews belonging to
 the graph's 5-core filtered users (899,964 reviews) — full-scale run,
 not the 300-review sanity sample. Batched + checkpointed since this is
 a long-running job. Never imports from the recommender side; the two
 halves meet only through files in data/.
+
+Output policy ("extract all, normalize after")
+-----------------------------------------------
+This script writes EVERY open-vocabulary aspect PyABSA emits into
+data/interim/absa_full.csv (columns: user_id, item_id, aspect, sentiment).
+No filtering or canonicalization happens here. A SEPARATE normalization step
+(src/sentiment/normalize_aspects.py) maps raw aspects onto the canonical
+vocabulary defined in aspects.CANONICAL_ASPECTS and writes
+data/interim/absa_normalized.csv. The graph layer consumes ONLY the normalized
+file. See fixes.md #6 for the rationale and project-lead decision.
 """
 
 # Workaround: metric_visualizer calls update_checker.UpdateChecker.check()
