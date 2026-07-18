@@ -331,6 +331,11 @@ Combine with the #5 decision on whether figures are committed at all.
 
 ## 🟡 10. Docs and commit hygiene
 
+> **STATUS: ✅ RESOLVED (P5/P6 close-out)** — README rewritten to match the real
+> pipeline (three-split atomic files, normalization step, ST-HGRec, tests) with a
+> repo map of the runbooks/design docs; KICKSTART step 3 corrected at G1. Commit
+> style has been conventional-format since P0 (enforced at every gate).
+
 - **README (this branch)** is still the scaffold version — it doesn't reflect the
   now-pinned envs, the actual run commands, or the real dataset stats. `KICKSTART.md`
   is the accurate guide; either fold the run instructions into README or point

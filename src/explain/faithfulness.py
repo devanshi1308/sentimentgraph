@@ -5,8 +5,12 @@ METRIC DEFINITION (faithfulness, verbatim). For an honest explanation of a
 each reason is load-bearing by deleting exactly its supporting evidence — the
 ``absa_normalized`` sentiment rows for ``(item, aspect)`` — rebuilding the graph
 tensors, and re-propagating the model's *already-trained* embeddings through the
-perturbed adjacency (embeddings are held fixed; only graph structure changes, so
-the delta isolates that reason's structural contribution). Per-reason sensitivity
+perturbed adjacency (embeddings are held fixed; only graph structure changes).
+CAVEAT: removing a reason's evidence also shrinks the item's ``has_aspect``
+degree, re-normalizing the surviving co-aspect edges — so ``|Δscore|`` is a
+*sensitivity indicator* that includes this renormalization side-effect, not a
+pure per-reason decomposition; the clean isolation signal is the removed
+aspect's raw contribution collapse. Per-reason sensitivity
 is ``|Δscore| = |score_perturbed − score_original|`` together with the collapse of
 that aspect's signed ``has_aspect`` contribution toward zero/absence. The
 explanation-level ``faithfulness_score`` is the fraction of cited reasons whose

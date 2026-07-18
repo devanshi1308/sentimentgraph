@@ -157,7 +157,7 @@ def _flatten_variant_row(
     row: dict = {"variant": variant, "model": model_name, "seed": seed}
     # Normalise metric keys to lower-case so they match the expected schema.
     for k, v in results.items():
-        row[k.lower() if k.lower() in _SCHEMA_COLS else k.lower()] = v
+        row[k.lower()] = v
     return row
 
 
