@@ -10,6 +10,13 @@ Legend: 🔴 blocker for the model phase · 🟠 correctness/hygiene · 🟡 pol
 
 ## 🔴 1. The official 5-core benchmark split is being discarded
 
+> **STATUS: ✅ CODE-RESOLVED (P1, commit `216f9fa`)** — `build_atomic` now writes
+> `video_games.{train,valid,test}.inter`; all configs load them via
+> `benchmark_filename`, verified against RecBole 1.2.1 source (`Dataset.build()`
+> early-returns, bypassing `eval_args` splitting; only `mode: full` stays live).
+> **Runtime acceptance (row counts == official split, seed-stable reruns) lands in
+> P2** on a machine with the rec env + data.
+
 **Where:** `src/data/build_atomic.py` (`build_inter`), all `configs/*.yaml`.
 
 **What happens.** `build_inter()` downloads the official timestamp-based
@@ -97,6 +104,12 @@ Recommend (a) before the model phase so baselines and ST-HGRec share one stack.
 
 ## 🔴 3. ABSA output is not wired into the graph (pipeline disconnected)
 
+> **STATUS: ✅ CODE-RESOLVED (P1, commits `7319872`, `5505a8b`)** — sentiment flow is
+> now `absa_full.csv` → `normalize_aspects.py` → `absa_normalized.csv` → `build_graph`
+> (CLI-overridable). Graph + trust + ABSA population all read `train.inter` only
+> (test-leakage guard). Edge construction vectorized; skipped rows counted; aspect
+> nodes from kept rows only. **Full-scale run (real edge counts) lands in P2.**
+
 **Where:** `src/sentiment/run_absa.py` writes
 `data/interim/absa_full.csv`; `src/graph/build_graph.py` reads
 `data/interim/absa_sample.csv` (`SENTIMENT_PATH`).
@@ -165,8 +178,9 @@ typed edge in the heterogeneous graph.
 > `absa_sample.csv`, and the 1.3 MB figure untracked (kept on disk; figure moved to
 > `results/figures/`). `.gitignore` now covers `data/processed/`, `*.gpickle`, and
 > `data/interim/*.{csv,txt}`. Verified by G0 gate: no tracked file >24 KB.
-> **Deferred sub-item (escalated):** purging the ~90 MB blobs already in history
-> (filter-repo + force-push) awaits Muaaz sign-off.
+> **Deferred sub-item (decided at G0):** purging the ~90 MB blobs already in history
+> is deferred to a pre-submission quiet moment (filter-repo + coordinated force-push;
+> Devanshi re-clones once).
 
 **Where:** `data/processed/video_games/graph.gpickle` (~90 MB, and growing:
 89 → 94 → 90 MB across commits); `results/graph_sentiment_edges.png` (1.3 MB).
@@ -204,6 +218,13 @@ so it belongs out of tracking.
 ---
 
 ## 🟠 6. The fixed aspect list was abandoned
+
+> **STATUS: ✅ RESOLVED (P1, commits `a0a3b24`, `5505a8b`)** — lead chose
+> **extract-all, normalize-after**: `run_absa` stays open-vocab; `aspects.py` is now a
+> 10-canonical vocabulary (PRD four first, priority-ordered) with word-boundary/prefix
+> matching (adversarially tested — `hardware`/`scoreboard`/`salesman`-class false
+> positives eliminated); `normalize_aspects.py` maps + reports coverage and top
+> unmatched terms for the lead's curation loop.
 
 **Where:** `src/sentiment/aspects.py` (`ASPECTS`) — no longer imported anywhere;
 `src/sentiment/run_absa.py` (old version filtered to `ASPECTS`, new one doesn't).
@@ -306,6 +327,11 @@ Combine with the #5 decision on whether figures are committed at all.
 ---
 
 ## 🟡 11. `requirements-absa.txt` missing runtime deps (addendum, found in P0)
+
+> **STATUS: ✅ RESOLVED (P1, commit `1d2168f`)** — `pyarrow==25.0.0` (not in pyabsa's
+> tree at all; required by `read_parquet`) and `update-checker==1.0.0` (transitive but
+> previously unpinned) pinned; `uv pip compile` resolves 95 packages, zero conflicts.
+> Full-install verification deferred to P2 on the ABSA machine.
 
 **Where:** `environments/requirements-absa.txt`; `src/sentiment/run_absa.py`.
 
