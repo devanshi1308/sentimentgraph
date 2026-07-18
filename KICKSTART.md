@@ -92,10 +92,13 @@ source env-rec/bin/activate
 python -m src.data.build_atomic    # 5-core split -> data/processed/video_games/*.{inter,item,user}
 ```
 
-Produces `video_games.inter` (user, item, rating, timestamp), `video_games.item`,
-`video_games.user`. These are the **only** thing the recommender reads.
+Produces three interaction files — `video_games.train.inter`, `video_games.valid.inter`,
+`video_games.test.inter` — preserving the official 5-core timestamp split verbatim, plus
+`video_games.item` and `video_games.user`. RecBole loads them via `benchmark_filename`
+(not a single combined `.inter`). The combined `video_games.inter` is intentionally absent.
 
-**Acceptance:** a valid `.inter` that RecBole loads without error.
+**Acceptance:** RecBole loads all three split files without error and row counts match the
+official 5-core split.
 
 ---
 

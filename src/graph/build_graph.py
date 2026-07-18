@@ -71,14 +71,14 @@ def build_graph(
 
     users = interactions["user_id"].unique()
     items = interactions["item_id"].unique()
-    aspects = sentiment["aspect"].unique() if len(sentiment) else []
 
     G.add_nodes_from((f"user:{u}" for u in users), node_type="user")
     G.add_nodes_from((f"item:{i}" for i in items), node_type="item")
-    G.add_nodes_from((f"aspect:{a}" for a in aspects), node_type="aspect")
+    # NOTE: aspect nodes are added AFTER the keep/skip filter below, derived
+    # from kept rows only. Adding them here from sentiment["aspect"].unique()
+    # would create orphan aspect nodes for rows that get skipped (unknown user/item).
 
-    print(f"  added {len(users):,} user nodes, {len(items):,} item nodes, "
-          f"{len(aspects):,} aspect nodes")
+    print(f"  added {len(users):,} user nodes, {len(items):,} item nodes")
 
     # interacts edges: user -> item (vectorized bulk construction).
     interacts_edges = [
@@ -95,8 +95,11 @@ def build_graph(
     # sentiment edges: user -> item (attribute-carrying) AND item -> aspect
     # (typed link). Rows whose user/item is absent from the TRAIN graph are
     # skipped and counted (test-only pairs land here — expected and correct).
+    # Aspect nodes are created here from KEPT rows only so that skipped rows
+    # (unknown user or item) do not produce orphan aspect nodes with no edges.
     sentiment_edges = []
     has_aspect_edges = []
+    kept_aspects: set[str] = set()
     skipped_sentiment = 0
     if len(sentiment):
         node_set = G.nodes  # membership test against built node set
@@ -110,6 +113,7 @@ def build_graph(
                 skipped_sentiment += 1
                 continue
             a_node = f"aspect:{a}"
+            kept_aspects.add(a)
             sentiment_edges.append(
                 (u_node, i_node,
                  {"edge_type": "sentiment", "aspect": a, "sentiment": s})
@@ -117,6 +121,9 @@ def build_graph(
             has_aspect_edges.append(
                 (i_node, a_node, {"edge_type": "has_aspect", "sentiment": s})
             )
+    # Add aspect nodes derived from kept rows only (no orphans).
+    G.add_nodes_from((f"aspect:{a}" for a in kept_aspects), node_type="aspect")
+    print(f"  added {len(kept_aspects):,} aspect nodes (from kept rows only)")
     G.add_edges_from(sentiment_edges)
     G.add_edges_from(has_aspect_edges)
     print(f"  added {len(sentiment_edges):,} sentiment edges "

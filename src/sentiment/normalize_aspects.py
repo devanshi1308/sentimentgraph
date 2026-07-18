@@ -7,14 +7,28 @@ any canonical are DROPPED and counted in the coverage report.
 
 Matching algorithm
 ------------------
-1. Lowercase and strip the raw aspect string.
-2. Iterate CANONICAL_ASPECTS in its insertion order (dict is ordered in Python 3.7+).
-3. For each canonical, check whether ANY of its variant substrings appears inside the
-   lowercased raw aspect (``variant in raw_lower``).
-4. The FIRST canonical whose any variant matches wins. This is the tie-break rule:
-   canonical insertion order in aspects.py takes priority, so the four PRD-locked
-   aspects (gameplay, graphics, price, difficulty) always beat the additional ones.
-5. If no canonical matches, the row is dropped.
+Variants are precompiled into regexes at setup time using two modes (see aspects.py):
+
+  * PREFIX variant (ends with '*'):
+    Stem matched as a word-start-anchored prefix: ``(?i)(?<!\\w)<stem>``
+    e.g. ``"graphic*"`` matches "graphics" but not "autographic".
+
+  * WHOLE-WORD / WHOLE-PHRASE variant (no '*'):
+    Matched with word boundaries on both sides: ``(?i)(?<!\\w)<variant>(?!\\w)``
+    e.g. ``"hard"`` only matches standalone "hard", not "hardware".
+
+  * Special case — '$':
+    The dollar sign is treated as a plain substring (``"$" in raw_lower``) rather than
+    a regex-bounded variant, because boundary anchors make it unmatchable when flanked
+    by digits (e.g. "$60"). This is the only variant that bypasses the regex path.
+
+Tie-break: the FIRST canonical (in insertion order of CANONICAL_ASPECTS) whose any
+variant matches wins. The four PRD-locked aspects (gameplay, graphics, price, difficulty)
+always beat the additional ones.
+
+Performance: to handle millions of rows efficiently, we build a term->canonical lookup
+from df['aspect'].unique() first, then map the full column — O(unique_terms) regex work
+instead of O(rows).
 
 Environment note
 ----------------
@@ -28,6 +42,7 @@ Usage
 """
 
 import argparse
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -43,31 +58,69 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_IN = _REPO_ROOT / "data" / "interim" / "absa_full.csv"
 _DEFAULT_OUT = _REPO_ROOT / "data" / "interim" / "absa_normalized.csv"
 
+# Sentinel used to tag the special-case plain-substring '$' variant.
+_DOLLAR_SENTINEL = "$"
+
+
+# ---------------------------------------------------------------------------
+# Regex compilation
+# ---------------------------------------------------------------------------
+
+def _compile_variant(variant: str) -> re.Pattern | None:
+    """Compile a single variant string into a regex pattern.
+
+    Returns None for the '$' special case — handled separately as plain substring.
+    """
+    if variant == _DOLLAR_SENTINEL:
+        return None  # special-cased as plain substring match
+
+    if variant.endswith("*"):
+        # PREFIX mode: word-start-anchored, no trailing boundary
+        stem = re.escape(variant[:-1])
+        return re.compile(rf"(?i)(?<!\w){stem}")
+    else:
+        # WHOLE-WORD/PHRASE mode: boundaries on both sides
+        escaped = re.escape(variant)
+        return re.compile(rf"(?i)(?<!\w){escaped}(?!\w)")
+
+
+def _build_compiled_canonicals(
+    canonical_aspects: dict[str, list[str]],
+) -> list[tuple[str, list[tuple[re.Pattern | None, str]]]]:
+    """Return an ordered list of (canonical, [(pattern_or_None, raw_variant), ...]) tuples.
+
+    pattern_or_None is None for the '$' special case, in which case the raw_variant
+    string '$' is used for a plain substring test instead.
+    """
+    result = []
+    for canonical, variants in canonical_aspects.items():
+        compiled = [((_compile_variant(v), v)) for v in variants]
+        result.append((canonical, compiled))
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Core matching logic
 # ---------------------------------------------------------------------------
 
-def _build_canonical_map(canonical_aspects: dict[str, list[str]]) -> list[tuple[str, list[str]]]:
-    """Return canonicals as an ordered list of (canonical, variants) pairs.
+def _map_term(
+    raw_term: str,
+    compiled_canonicals: list[tuple[str, list[tuple[re.Pattern | None, str]]]],
+) -> str | None:
+    """Return the canonical name for *raw_term*, or None if no match.
 
-    Using a list preserves the deterministic tie-break order even if the caller
-    passes an arbitrary dict (though in practice CANONICAL_ASPECTS is already ordered).
+    Iterates canonicals in insertion order; first match wins.
     """
-    return list(canonical_aspects.items())
-
-
-def map_to_canonical(raw_aspect: str, ordered_canonicals: list[tuple[str, list[str]]]) -> str | None:
-    """Return the canonical name for *raw_aspect*, or None if no match.
-
-    Matching is case-insensitive substring: the first canonical (in insertion order)
-    whose any variant string is a substring of the lowercased+stripped raw aspect wins.
-    """
-    raw_lower = raw_aspect.lower().strip()
-    for canonical, variants in ordered_canonicals:
-        for variant in variants:
-            if variant in raw_lower:
-                return canonical
+    raw_lower = raw_term.lower().strip()
+    for canonical, patterns in compiled_canonicals:
+        for pattern, raw_variant in patterns:
+            if pattern is None:
+                # '$' special case: plain substring
+                if _DOLLAR_SENTINEL in raw_lower:
+                    return canonical
+            else:
+                if pattern.search(raw_lower):
+                    return canonical
     return None
 
 
@@ -87,12 +140,18 @@ def normalize(in_path: Path, out_path: Path) -> None:
         sys.exit(1)
 
     total_rows = len(df)
-    ordered_canonicals = _build_canonical_map(CANONICAL_ASPECTS)
 
-    # Map each raw aspect to a canonical (or None)
-    df["canonical"] = df["aspect"].apply(
-        lambda a: map_to_canonical(str(a), ordered_canonicals)
-    )
+    # Precompile regexes once
+    compiled_canonicals = _build_compiled_canonicals(CANONICAL_ASPECTS)
+
+    # Performance optimisation: build term->canonical map from UNIQUE raw aspects only,
+    # then map the full column. Avoids re-running regex matching for repeated terms.
+    unique_terms = df["aspect"].unique()
+    term_map: dict[str, str | None] = {
+        t: _map_term(str(t), compiled_canonicals) for t in unique_terms
+    }
+
+    df["canonical"] = df["aspect"].map(term_map)
 
     unmatched_mask = df["canonical"].isna()
     unmatched_df = df[unmatched_mask].copy()

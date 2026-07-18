@@ -1,10 +1,9 @@
 """PyABSA -> raw open-vocabulary aspect/sentiment table.
 
-Runs in the ABSA env only. Applies PyABSA over ALL reviews belonging to
-the graph's 5-core filtered users (899,964 reviews) — full-scale run,
-not the 300-review sanity sample. Batched + checkpointed since this is
-a long-running job. Never imports from the recommender side; the two
-halves meet only through files in data/.
+Runs in the ABSA env only. Applies PyABSA over all reviews belonging to
+the train-split user population — full-scale run, not the 300-review sanity
+sample. Batched + checkpointed since this is a long-running job. Never imports
+from the recommender side; the two halves meet only through files in data/.
 
 Output policy ("extract all, normalize after")
 -----------------------------------------------
@@ -31,7 +30,7 @@ from pyabsa import AspectTermExtraction as ATEPC
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REVIEWS_PARQUET = REPO_ROOT / "data" / "raw" / "reviews_video_games.parquet"
-INTER_PATH = REPO_ROOT / "data" / "processed" / "video_games" / "video_games.inter"
+INTER_PATH = REPO_ROOT / "data" / "processed" / "video_games" / "video_games.train.inter"  # leakage guard: sentiment population = train users only
 OUTPUT_PATH = REPO_ROOT / "data" / "interim" / "absa_full.csv"
 CHECKPOINT_PATH = REPO_ROOT / "data" / "interim" / "absa_full_progress.txt"
 
