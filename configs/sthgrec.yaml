@@ -26,6 +26,25 @@ epochs: 300
 use_sentiment_edges: true
 use_trust_edges: true
 
+# Relation-strength scalars (STHGREC_DESIGN.md §2.2). Default 1.0 = each relation
+# contributes at its normalized magnitude. Fixed (not learned); lets the lead
+# tune relative strength without retraining code.
+sentiment_weight: 1.0
+aspect_weight: 1.0
+trust_weight: 1.0
+
+# LightGCN parity knob consumed by the L2 reg (RecBole EmbLoss). LightGCN's
+# default is false; kept explicit for reproducibility.
+require_pow: false
+
+# Source CSVs for graph-tensor construction (STHGREC_DESIGN.md §1.2). The model
+# builds adjacency from these, NOT from graph.gpickle. Paths are repo-relative.
+graph_inter_csv: data/processed/video_games/video_games.train.inter
+graph_sentiment_csv: data/interim/absa_normalized.csv
+graph_trust_csv: data/interim/trust_signals.csv
+# Deterministic raw<->index contract (STHGREC_DESIGN.md §1.1); tracked in git.
+graph_id_map_json: data/processed/video_games/sthgrec_id_maps.json
+
 metrics: [Recall, NDCG]
 topk: [10, 20]
 valid_metric: NDCG@10
