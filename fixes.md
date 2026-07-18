@@ -161,6 +161,13 @@ typed edge in the heterogeneous graph.
 
 ## 🟠 5. Large binaries committed to git
 
+> **STATUS: ✅ RESOLVED (P0, commit `ed9e236`)** — `graph.gpickle` (~90 MB),
+> `absa_sample.csv`, and the 1.3 MB figure untracked (kept on disk; figure moved to
+> `results/figures/`). `.gitignore` now covers `data/processed/`, `*.gpickle`, and
+> `data/interim/*.{csv,txt}`. Verified by G0 gate: no tracked file >24 KB.
+> **Deferred sub-item (escalated):** purging the ~90 MB blobs already in history
+> (filter-repo + force-push) awaits Muaaz sign-off.
+
 **Where:** `data/processed/video_games/graph.gpickle` (~90 MB, and growing:
 89 → 94 → 90 MB across commits); `results/graph_sentiment_edges.png` (1.3 MB).
 `.gitignore` covers `*.pt/.pth/.bin/.ckpt` and `data/raw/` but **not**
@@ -225,6 +232,12 @@ Either way, remove the orphaned/dead code state.
 
 ## 🟡 7. `matplotlib` missing from the rec environment
 
+> **STATUS: ✅ RESOLVED (P0, commit `52fff89`)** — pinned `matplotlib==3.11.1`,
+> `httpx==0.28.1`, `pyarrow==25.0.0` + 8 transitives (httpx/pyarrow were also missing —
+> found by full import scan). `uv pip compile` resolves the file cleanly (66 pkgs,
+> no conflicts). Verified by G0 gate: every third-party import in rec-side `src/` maps
+> to a pin. See new item #11 for the absa-env counterpart.
+
 **Where:** `src/graph/visualize_graph.py` does `import matplotlib.pyplot as plt`;
 `environments/requirements-rec.txt` pins `plotly` but **not** `matplotlib`.
 
@@ -244,6 +257,10 @@ unpinned transitive deps.
 
 ## 🟡 8. `run_baselines.py` defines `MODEL_CLASSES` twice
 
+> **STATUS: ✅ RESOLVED (P0, commit `1f23efc`)** — dead 2-model dict and `# add this`
+> comment removed; model imports regrouped. G0 gate verified: single `MODEL_CLASSES`
+> with all four models, ast-parses, no functional change.
+
 **Where:** `src/eval/run_baselines.py` lines ~30–40.
 
 **What happens.** The dict is assigned twice — the first (`Pop`, `BPR` only) is
@@ -260,6 +277,10 @@ keep the single four-model dict.
 ---
 
 ## 🟡 9. Figure saved outside `results/figures/`
+
+> **STATUS: ✅ RESOLVED (P0, commit `154bfe8`)** — `OUTPUT_PATH` now writes to
+> `results/figures/`; the hardcoded "The 4 …" title replaced with a dynamic edge count.
+> Existing PNG moved on disk to the new location (untracked, regenerable).
 
 **Where:** `src/graph/visualize_graph.py` writes to `results/graph_sentiment_edges.png`;
 PRD §9 designates `results/figures/` for figures (currently empty).
@@ -281,6 +302,25 @@ Combine with the #5 decision on whether figures are committed at all.
 - **Commit messages** on `devanshi` (`add`, `graph`, `lightgcn + ngcf`) diverge
   from the conventional-commit style used on `main`. Not blocking; worth aligning
   before any merge to `main` so history stays consistent.
+
+---
+
+## 🟡 11. `requirements-absa.txt` missing runtime deps (addendum, found in P0)
+
+**Where:** `environments/requirements-absa.txt`; `src/sentiment/run_absa.py`.
+
+**What happens.** The absa env pins only 4 top-level packages, but `run_absa.py`
+(a) imports `update_checker` at module top to monkeypatch it — not pinned, so a
+fresh install crashes on import; (b) calls `pd.read_parquet(...)`, which needs
+`pyarrow` at runtime — also not pinned.
+
+**Why it matters.** PRD §5 acceptance: both requirements files install clean and the
+scripts run. The absa env currently only works on machines where these arrived
+transitively.
+
+**Fix.** Pin `update_checker` and `pyarrow` (and ideally full-freeze the absa env with
+`uv pip freeze` on the machine where it works) into `requirements-absa.txt`.
+Scheduled for Phase P1/P2 alongside sentiment work.
 
 ---
 
