@@ -153,12 +153,12 @@ the ABSA rows, and the graph's aspect nodes reflect the full aspect vocabulary.
 
 ## 🟠 4. Trust "edges" are node attributes, and the committed graph has none
 
-> **STATUS: 🟢 DECIDED (Muaaz sign-off 2026-07-18), implementation lands in P4** —
-> **Option 4A**: trust enters ST-HGRec as a propagation weight scaling the user's
-> interaction edges (no fabricated social graph; zeroes cleanly under
-> `use_trust_edges` for ablations; citable in honest explanations). Analysis in
-> `STHGREC_DESIGN.md` §3. The graph-side plumbing (trust CSV → node attr) was wired
-> in P1; the full-scale `trust_applied > 0` check runs in P2.
+> **STATUS: ✅ RESOLVED (P4, commits `91477ed`, `a1ae636`)** — **Option 4A implemented**:
+> trust scales the user's interaction-edge weights inside `graph_tensors` (missing
+> trust → 1.0), verified by independent gate audit to touch only interaction edges and
+> to restore exact equality under `use_trust_edges: false`. Analysis in
+> `STHGREC_DESIGN.md` §3. The graph-side `trust_applied > 0` full-scale check still
+> runs in P2.
 
 **Where:** `src/graph/build_graph.py` (`build_graph`, trust block);
 `src/data/trust_signals.py` output `data/interim/trust_signals.csv` (absent).
