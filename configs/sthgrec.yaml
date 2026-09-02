@@ -48,3 +48,5 @@ graph_id_map_json: data/processed/video_games/sthgrec_id_maps.json
 metrics: [Recall, NDCG]
 topk: [10, 20]
 valid_metric: NDCG@10
+use_gpu: false
+device: cpu

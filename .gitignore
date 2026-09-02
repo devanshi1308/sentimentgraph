@@ -24,18 +24,8 @@ checkpoints.json
 log/
 log_tensorboard/
 *.result.json
+data/processed/video_games/graph.gpickle
 
-# --- regenerable pipeline artifacts (T0.1) ---
-# RecBole atomic files, graph pickles, and any other processed outputs;
-# none of these should ever be committed — re-run the pipeline to regenerate.
+# regenerable heavy artifacts
 data/processed/
-
-# NetworkX / pickle graph files produced anywhere in the repo
 *.gpickle
-
-# ABSA interim CSVs and trust-handoff files (scoped to data/interim only;
-# results/**/*.csv such as results/baselines/summary.csv remains trackable)
-data/interim/*.csv
-
-# ABSA progress checkpoint files
-data/interim/*.txt
