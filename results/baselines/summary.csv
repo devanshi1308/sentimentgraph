@@ -1,0 +1,2 @@
+model,seed,recall@10,recall@20,ndcg@10,ndcg@20
+STHGRec,2020,0.0094,0.0142,0.0056,0.0071
