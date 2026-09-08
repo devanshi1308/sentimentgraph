@@ -46,29 +46,98 @@ otherwise avoid, all to reuse math we can express in a few sparse matmuls. B buy
 unofficial torch-2.5 status ever bites, C drops in with zero deps (the design in
 `STHGREC_DESIGN.md` §5 is written to survive either).
 
+> **What actually shipped (P4): B for the harness, C for the model internals.**
+> See "Implementation outcome" below — the `torch-geometric` pin stayed, but the
+> ST-HGRec propagation is hand-written `torch.sparse.mm`, not PyG `MessagePassing`.
+
 Accepted PRD §2 amendment text (applies on sign-off):
 > Harness = vanilla RecBole 1.2.1 (Config/Trainer/eval). PyG (`torch_geometric==2.6.1`,
 > pure-Python) is used only inside `src/models/sthgrec.py`. RecBole-GNN dropped:
 > unmaintained since 2023-10, no PyPI release, pinned to recbole 1.1.1.
 
-## De-risk steps (P2/P4)
+## De-risk steps (P2/P4) — all cleared
 
-1. `uv pip install torch_geometric==2.6.1` into the rec env on both machines;
-   confirm `import torch_geometric; from torch_geometric.nn import MessagePassing`
-   against torch 2.5.1.
-2. Toy-graph parity test: one LightGCN propagation layer, RecBole vanilla vs our
-   path, assert embeddings match.
-3. Confirm `configs/sthgrec.yaml` drives the identical `benchmark_filename` split as
-   baselines (apples-to-apples `summary.csv` row).
+1. **[x] PyG runtime import on torch 2.5.1.** `torch-geometric==2.6.1` installs and
+   imports against `torch==2.5.1` in both `env-rec` and `rec-env`:
+   `import torch_geometric` → `2.6.1`; `from torch_geometric.nn import MessagePassing`
+   succeeds. The "PyG 2.6 compat table tops out at torch 2.4" caveat did not bite.
+2. **[x] Toy-graph LightGCN parity.** Landed as
+   `tests/test_sthgrec.py::test_parity_lightgcn`: a 5-node bipartite graph with
+   sentiment+trust off, checked against a **closed-form** `D^-1/2 A D^-1/2`
+   LightGCN reference (stronger than the vanilla-RecBole-vs-ours diff originally
+   sketched). Part of the 24-test suite that passes green.
+3. **[x] Same split as baselines (config level).** `configs/sthgrec.yaml` and every
+   baseline config carry `benchmark_filename: [train, valid, test]`;
+   `run_sthgrec.py` reuses the identical `create_dataset` / `data_preparation`
+   flow; P2/P3 logs show identical `eval_args`. A runtime train/valid/test
+   row-count assertion is still tracked as **fixes.md #1** (P2 acceptance, not
+   harness-specific).
+
+## Implementation outcome (P4)
+
+**Harness = Option B; model internals = Option C.** The environment decision held
+verbatim — vanilla RecBole 1.2.1 `Config`/`Trainer`/`evaluate` drive everything
+(`src/eval/run_sthgrec.py`), `torch-geometric==2.6.1` is pinned, RecBole-GNN is
+gone. But the ST-HGRec propagation itself (`src/models/sthgrec.py`,
+`src/models/graph_tensors.py`) is hand-written `torch.sparse.mm` over per-relation
+`D^-1/2 A D^-1/2` COO adjacencies — **`torch_geometric` is imported nowhere in
+`src/` or `tests/`.** Commits `43bcde7` (pin) and `91477ed` (model, "sanctioned
+fallback path under harness Option B").
+
+Why the sparse path won in practice: heterogeneous LightGCN is one `spmm` per
+relation per layer with no learned message function, so `HeteroData`/
+`MessagePassing` bought no ergonomics over three `torch.sparse.mm` calls, and the
+sparse path is deterministic on CPU and dependency-free.
+
+**Status of the `torch-geometric` pin:** currently unused by any code path. Keep
+it — it is a pure-Python `py3-none-any` wheel (zero install cost, uv-clean), and
+`STHGREC_DESIGN.md` §2.3 explicitly reserves PyG for a possible future
+per-aspect-relation extension. Revisit only if the env is being trimmed for
+submission.
+
+Caveat carried from `e231206`: ST-HGRec runs **CPU-only** (`use_gpu: false`,
+`device: cpu` in `configs/sthgrec.yaml`) because MPS lacks sparse-tensor support;
+`torch.sparse.mm` is deterministic there, satisfying the §4 seed-stability bar.
+
+## Results (seed 2020, official 5-core split configs)
+
+From `results/baselines/summary.csv` (P2/P3):
+
+| model | recall@10 | recall@20 | ndcg@10 | ndcg@20 |
+|-------|-----------|-----------|---------|---------|
+| Pop | 0.0050 | 0.0071 | 0.0032 | 0.0039 |
+| BPR | 0.0073 | 0.0111 | 0.0049 | 0.0060 |
+| NGCF | 0.0075 | 0.0135 | 0.0049 | 0.0067 |
+| LightGCN | 0.0079 | 0.0131 | 0.0047 | 0.0063 |
+| **STHGRec** (no-sentiment sanity) | **0.0094** | **0.0142** | **0.0056** | **0.0071** |
+
+- Ordering is sane (LightGCN ≥ NGCF ≥ BPR ≥ Pop). ST-HGRec lands modestly above
+  LightGCN, consistent with the PRD bar ("solid and reproducible… at-or-modestly-
+  above LightGCN is success").
+- The STHGRec row is a **no-sentiment sanity run**: `absa_normalized.csv` is not
+  on disk yet (**fixes.md #3**, P2), so the sentiment + has_aspect relations are
+  empty regardless of the config flag; trust 4A is active. It is **not** the
+  headline number. Trained 80 epochs, best at epoch 69, CPU.
+- Whole benchmark runs ~10× lower than the stale `0.0865` reference in
+  `STHGREC_DESIGN.md` §5 — that number predates the official-split correction
+  (fix #1); update or footnote it so nobody chases it.
+
+**Still open (not harness blockers):** headline ST-HGRec number with sentiment on
+(blocked on ABSA full run, fixes.md #3); the −sentiment / −trust / −both ablation
+rows (`src/eval/ablations.py` exists, commit `5d45e52`; P6); seed-stable rerun
+assertion (design §4 / fixes.md #1).
 
 ## Status
 
-- [x] **Muaaz signed off (2026-07-18): Option B** — vanilla RecBole harness, pure PyG
-  inside ST-HGRec only; Option C stays the sanctioned fallback. The PRD §2 amendment
-  above is now in force.
+- [x] **Muaaz signed off (2026-07-18): Option B** — vanilla RecBole harness, PyG
+  pinned for ST-HGRec only; Option C stays the sanctioned fallback. PRD §2
+  amendment in force.
 - [x] **Muaaz signed off (2026-07-18): trust Option 4A** — trust as a propagation
   weight on the user's interaction edges (see `STHGREC_DESIGN.md` §3).
 - [x] Pins applied to `requirements-rec.txt`: `torch-geometric==2.6.1` + transitives
   (aiohttp, aiohappyeyeballs, multidict, propcache, yarl); full file re-resolves clean.
-- P4 T4.2/T4.3 are unblocked. Remaining de-risk step 1 (runtime import of PyG on
-  torch 2.5.1 on both machines) executes at the start of P2/P4.
+- [x] **P4 T4.2/T4.3 delivered** (`91477ed`, `a1ae636`): `graph_tensors` +
+  `STHGRec` + `run_sthgrec.py`, 24 tests green, real-data run in `summary.csv`.
+  In the end the model uses the Option-C `torch.sparse` path under the Option-B
+  harness (see "Implementation outcome").
+- [x] All three de-risk steps cleared (see above).

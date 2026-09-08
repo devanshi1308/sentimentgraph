@@ -293,10 +293,14 @@ expensive-to-reverse).
   model,seed,recall@10,recall@20,ndcg@10,ndcg@20
   ```
   ST-HGRec emits exactly this row shape (`model=STHGRec, seed=2020, ...`) so it
-  slots in alongside `Pop / BPR / LightGCN / NGCF`. Current baseline reference
-  (for sanity ordering): LightGCN `recall@10=0.0865, ndcg@10=0.047`; ST-HGRec
-  should land **≥ LightGCN** to justify the added structure, but the PRD bar is
-  "solid and reproducible," not "beats LightGCN."
+  slots in alongside `Pop / BPR / LightGCN / NGCF`. Current baseline reference on
+  the **official split** (P2/P3, `summary.csv`, seed 2020): LightGCN
+  `recall@10=0.0079, ndcg@10=0.0047`; the whole benchmark runs ~10× lower on this
+  split than the pre-fix-#1 random-resplit numbers (do not chase the old
+  `~0.086`). ST-HGRec should land **≥ LightGCN** to justify the added structure
+  — the no-sentiment sanity run already does (`recall@10=0.0094`; ABSA output not
+  yet on disk, fix #3) — but the PRD bar is "solid and reproducible," not "beats
+  LightGCN."
 - **Runner integration — [DECIDED, harness-aware]:** add a **dedicated
   `src/eval/run_sthgrec.py`** rather than extending `run_baselines.py`'s
   `MODEL_CLASSES`. Reasons: (i) `MODEL_CLASSES` maps to RecBole
@@ -443,29 +447,29 @@ end-to-end.
 
 ---
 
-## 10. Sign-off needed (lead checklist)
+## 10. Sign-off (lead checklist) — ALL SIGNED OFF 2026-07-18, implemented P4
 
-Before `model-core` implements P4, the lead must confirm:
-
-- [ ] **Trust representation (fix #4):** approve **Option 4A** (trust as
-      `interacts`-edge propagation weight). Alternatives 4B/4C analyzed in §3 and
-      rejected. — *expensive-to-reverse, PRD §6.*
-- [ ] **Harness (fix #2 / T4.1):** RecBole-GNN vs standalone PyG vs custom
-      `torch.sparse`-in-vanilla-RecBole. **Deferred to the parallel `env-harness`
-      analysis** — see that agent's report. This design is harness-agnostic; only
-      §5 (runner form: RecBole `Trainer` reuse vs own train/eval loop) and §4
-      (which `spmm` determinism knob) change with the pick. Sign both off together.
-- [ ] **Hyperparameter deltas:** default is *identical to `configs/lightgcn.yaml`*
-      (d=64, L=3, reg=1e-4, bs=2048, lr=1e-3, epochs=300, seed=2020) for
-      comparability. Approve as-is, or specify deltas.
-- [ ] **Optional relation weights** `sentiment_weight / aspect_weight /
-      trust_weight` (default 1.0): expose as config knobs, or hard-code to 1.0 and
-      keep the config surface minimal?
-- [ ] **ID-map file tracked in git?** `sthgrec_id_maps.json` is small and is the
-      raw↔index contract; recommend tracking it (unlike the gpickle). Confirm.
+- [x] **Trust representation (fix #4):** **Option 4A** approved (trust as
+      `interacts`-edge propagation weight). Implemented in
+      `graph_tensors.build_interacts_relation`; `HARNESS_DECISION.md` Status.
+- [x] **Harness (fix #2 / T4.1):** **Option B** approved (vanilla RecBole harness +
+      pinned pure-Python PyG). In implementation the model propagation uses the
+      Option-C `torch.sparse.mm` path *under* the Option-B harness — PyG is pinned
+      but unused by any code path. Full rationale + results in `HARNESS_DECISION.md`
+      ("Implementation outcome"). §5 runner form: dedicated `run_sthgrec.py`
+      reusing RecBole `Trainer`/`evaluate`. §4 determinism: CPU `torch.sparse.mm`
+      (deterministic; MPS lacks sparse support).
+- [x] **Hyperparameter deltas:** approved as-is — identical to
+      `configs/lightgcn.yaml` (d=64, L=3, reg=1e-4, bs=2048, lr=1e-3, epochs=300,
+      seed=2020). No deltas.
+- [x] **Optional relation weights** `sentiment_weight / aspect_weight /
+      trust_weight`: exposed as config knobs in `configs/sthgrec.yaml`, default 1.0,
+      fixed (not learned).
+- [x] **ID-map file tracked in git?** Yes — `sthgrec_id_maps.json` is tracked
+      (`graph_id_map_json` in the config; asserted-equal on load).
 
 ---
 
-*Once signed off, implementation fills `src/models/sthgrec.py` (currently a stub),
-adds `src/eval/run_sthgrec.py`, and wires `graph_to_tensors`. No code is written
-before sign-off.*
+*Implemented: `src/models/sthgrec.py`, `src/models/graph_tensors.py`,
+`src/eval/run_sthgrec.py` (commits `91477ed`, `a1ae636`). 24 tests green; real-data
+row in `results/baselines/summary.csv`.*

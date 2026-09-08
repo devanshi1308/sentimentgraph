@@ -1,0 +1,257 @@
+\documentclass[10pt]{article}
+
+\usepackage[a4paper,margin=0.85in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{parskip}
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=blue!55!black]{hyperref}
+
+% --- lightweight "key box" (no tcolorbox in this TeX install) ---
+\newcommand{\keybox}[1]{%
+  \par\smallskip\noindent
+  \fcolorbox{black!35}{black!6}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{\small #1}}%
+  \par\smallskip}
+
+% --- compact itemize ---
+\newenvironment{titems}
+  {\begin{itemize}\setlength\itemsep{1.5pt}\setlength\parskip{0pt}\small}
+  {\end{itemize}}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\Ahat}{\widehat{A}}
+
+\setlength{\parskip}{0.5em}
+
+\title{\vspace{-1.2cm}\textbf{ST-HGRec --- Technical Gist}}
+\author{\small Trust-aware sentiment-graph recommendation with faithful aspect-level explanations}
+\date{\small Offline pipeline summary --- 2026-09-07}
+
+\begin{document}
+\maketitle
+\vspace{-0.7cm}
+
+\keybox{%
+\textbf{One paragraph.} We recommend Amazon \emph{Video Games} items with a heterogeneous
+LightGCN (\textbf{ST-HGRec}) that runs over a graph of \emph{user / item / aspect} nodes.
+Aspect-based sentiment (PyABSA) and per-user trust signals enter the graph as edge
+structure and edge weights --- never as an MLP. The model exposes hooks that let an
+\emph{honest} explanation cite only graph facts; an \emph{ungrounded} generator (study
+stimulus, quarantined) cites nothing real; a remove-a-reason \emph{faithfulness} check
+separates the two. The paper's contribution is a human calibration study --- the offline
+system only has to be \textbf{solid and reproducible, not best-in-class}.}
+
+\section{Data and split}
+Amazon Reviews 2023, Video Games category (McAuley-Lab). We use the \textbf{official 5-core
+timestamp benchmark split verbatim} --- RecBole loads
+\code{video\_games.\{train,valid,test\}.inter} through its \code{benchmark\_filename}
+mechanism, which partitions by file and \emph{bypasses} any random re-split.
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+ & train & valid & test \\
+\midrule
+interactions & 736{,}827 & 34{,}510 & 43{,}249 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Atomic-file row counts equal the official CSVs exactly ($\pm 0$).
+\textbf{Leakage guard:} the graph, trust signals, and ABSA population are all built from
+\code{train.inter} \emph{only}. Train population: 91{,}562 users, 22{,}976 items,
+$\approx$748K reviews with usable text.
+
+\section{Pipeline}
+\begin{center}\small\ttfamily
+raw parquet $\rightarrow$ build\_atomic (5-core split $\rightarrow$ .inter/.item/.user)\\[2pt]
+$\rightarrow$ [ run\_baselines ]\quad[ trust\_signals ]\quad[ run\_absa $\rightarrow$ normalize\_aspects ]\\[2pt]
+$\rightarrow$ graph\_tensors (per-relation sparse $\widehat{A}$) $\rightarrow$ STHGRec\\[2pt]
+$\rightarrow$ [ ablations ]\quad[ honest / ungrounded + faithfulness ]
+\end{center}
+Two isolated Python envs (recommender: RecBole + PyTorch; sentiment: PyABSA). They never
+share a process; they meet only through files in \code{data/}. Every run is driven by one
+\code{configs/*.yaml} at \code{seed 2020}.
+
+\section{Baselines}
+Popularity, BPR, NGCF, LightGCN --- all through vanilla RecBole 1.2.1. Pairwise BPR
+objective, uniform 1 negative / positive, full-ranking evaluation. Metrics
+$\mathrm{Recall}@K$ and $\mathrm{NDCG}@K$ for $K\in\{10,20\}$.
+
+\section{Sentiment (ABSA)}
+PyABSA \code{FAST\_LCF\_ATEPC} (multilingual) over each review $\rightarrow$ open-vocabulary
+pairs $(\text{aspect},\,p)$ with polarity
+$p\in\{\text{Positive},\text{Neutral},\text{Negative}\}$. A separate normalizer maps raw
+aspects onto a fixed \textbf{12-term canonical vocabulary} (the 4 PRD-locked aspects
+\emph{gameplay, graphics, price, difficulty} first, then 8 domain aspects: story,
+controls, sound, multiplayer, performance, value, \dots). Matching is word-boundary /
+word-start-prefix regex, case-insensitive, \textbf{first canonical in insertion order
+wins}; unmatched terms are dropped and reported for curation. Output:
+\code{absa\_normalized.csv} with \code{user\_id, item\_id, aspect, sentiment}.
+
+\section{Trust signals (per user, Option 4A)}
+Computed over each user's full review history (a slow-moving reputation \emph{prior}, not a
+per-interaction label). With $\sigma_u$ the std.\ of user $u$'s star ratings:
+\[
+\text{verified}_u = \operatorname{mean}(\text{verified\_purchase}), \qquad
+\text{consistency}_u = \frac{1}{1+\sigma_u},
+\]
+\[
+\text{helpful}_u = \frac{\operatorname{mean}_u(\text{helpful\_vote})}{\max_v \operatorname{mean}_v(\text{helpful\_vote})}, \qquad
+\boxed{\;\text{trust}_u = \tfrac{1}{3}\big(\text{verified}_u + \text{helpful}_u + \text{consistency}_u\big) \in [0,1]\;}
+\]
+
+\section{Graph $\rightarrow$ tensors}
+\textbf{Node index space} (one global table, block-offset; sorted raw IDs $\Rightarrow$
+deterministic, seed-independent; persisted to \code{sthgrec\_id\_maps.json}):
+\[
+[\,0,\;n_u)\ \text{users}\qquad
+[\,n_u,\;n_u{+}n_i)\ \text{items}\qquad
+[\,n_u{+}n_i,\;n_u{+}n_i{+}n_a)\ \text{aspects}.
+\]
+
+\textbf{Three relations}, each a weighted edge list, de-duplicated / aggregated:
+\begin{titems}
+\item \emph{interacts} $(u\!-\!i)$: binary, one edge per pair. Weight
+      $w_{ui} = \text{trust}_u$ if \code{use\_trust\_edges} else $1$ (missing trust $\to 1$).
+\item \emph{sentiment} $(u\!-\!i)$: signed polarity $s(p)\in\{+1,0,-1\}$;
+      $w_{ui} = \operatorname{clip}\!\big(\operatorname{mean}_{\text{aspects}} s,\,-1,\,+1\big)$.
+\item \emph{has\_aspect} $(i\!-\!a)$: $w_{ia} = \operatorname{mean}_{\text{rows}} s(p)$.
+\end{titems}
+
+\textbf{Symmetric normalization} per relation (LightGCN style, sign-aware):
+\[
+\Ahat = D^{-1/2}\,(A + A^\top)\,D^{-1/2}, \qquad
+D_{ii} = \sum_j \big|\,(A+A^\top)_{ij}\,\big|.
+\]
+Degree uses $|w|$ so negative sentiment does not cancel the normalizer; $\Ahat$ keeps the
+sign. Neutral ($s=0$) edges are present but carry no message.
+
+\section{Model --- ST-HGRec}
+One embedding table $E \in \mathbb{R}^{(n_u+n_i+n_a)\times d}$, $d=64$, Xavier init.
+\textbf{No feature transforms, no nonlinearities, no attention, no message dropout} ---
+LightGCN discipline; sentiment and trust are purely structure and weights.
+
+\textbf{$L=3$ layer heterogeneous propagation}, then layer-mean:
+\[
+E^{(0)} = E, \qquad
+E^{(l)} = \Ahat_{\text{int}}E^{(l-1)}
+\;+\; \lambda_s\,\Ahat_{\text{sent}}E^{(l-1)}
+\;+\; \lambda_a\,\Ahat_{\text{asp}}E^{(l-1)},
+\]
+\[
+E_{\text{final}} = \frac{1}{L+1}\sum_{l=0}^{L} E^{(l)}, \qquad
+\hat{y}_{ui} = E_{\text{final}}[u]^\top E_{\text{final}}[i].
+\]
+The sentiment / has\_aspect terms are dropped entirely when \code{use\_sentiment\_edges} is
+false. $\lambda_s=\lambda_a=\lambda_t=1$ are \textbf{fixed} (config-exposed, not learned).
+Aspect nodes have no direct user edge --- their signal reaches users only via
+item\,$\to$\,aspect\,$\to$\,item paths, so $L\ge 2$ matters.
+
+\textbf{Loss} (BPR + L2, identical objective to the RecBole baselines):
+\[
+\mathcal{L} = \sum_{(u,i^+,i^-)} -\ln \sigma\!\big(\hat{y}_{u i^+} - \hat{y}_{u i^-}\big)
+\;+\; \lambda_{\text{reg}}\,\big\lVert E^{(0)}_{u,\,i^+,\,i^-}\big\rVert_2^2 .
+\]
+$\lambda_{\text{reg}}=10^{-4}$, Adam, lr $10^{-3}$, batch 2048, $\le$300 epochs, early stop
+on $\mathrm{NDCG}@10$, 1 uniform negative / positive.
+
+\keybox{%
+\textbf{Harness.} Vanilla RecBole \code{Config}/\code{Trainer}/\code{evaluate} (Option B).
+\textbf{Propagation} is hand-written \code{torch.sparse.mm} over the three coalesced COO
+adjacencies (Option C) --- \code{torch\_geometric} is pinned but imported nowhere. A
+RecBole-id $\leftrightarrow$ global-node translation layer maps RecBole's internal ids to
+our sorted index; unseen valid/test ids route to a zero PAD slot (matches baseline
+cold-start).}
+
+\section{Ablations (switch-off matrix)}
+\begin{center}\small
+\begin{tabular}{llll}
+\toprule
+variant & \code{use\_sentiment} & \code{use\_trust} & purpose \\
+\midrule
+full         & true  & true  & headline ST-HGRec number \\
+$-$sentiment & false & true  & isolate sentiment value \\
+$-$trust     & true  & false & isolate trust value \\
+$-$both      & false & false & $\approx$ LightGCN (interacts-only) --- sanity anchor \\
+\bottomrule
+\end{tabular}
+\end{center}
+Each flag flip \emph{omits the whole relation term} from the propagation sum (the spmm is
+skipped, not zeroed) --- exact and cheap. \code{use\_trust\_edges=false} reverts every
+interaction weight to $1$, so $-$both must reproduce the LightGCN baseline within
+tolerance; a closed-form 5-node parity test asserts exactly this.
+
+\section{Explanations and faithfulness}
+\textbf{Honest} (\code{explain/honest.py}): \code{extract\_facts} reads only the model's
+hooks --- top-$K$ aspects by $|$contribution$|$, the verbatim supporting sentiment rows,
+and the trust context. A deterministic template renders 2--4 sentences citing \emph{only}
+those aspects. An optional injectable \code{rephrase\_fn} can hand the facts block to an
+LLM at study time --- \textbf{no LLM SDK is imported anywhere in \code{src/}}.
+
+\textbf{Ungrounded} (\code{explain/ungrounded.py}): fixed persuasive templates keyed by
+item identity, referencing no graph fact. \textbf{Quarantined} --- an AST test forbids any
+\code{src/models}, \code{src/eval}, \code{src/graph}, \code{src/data}, or
+\code{src/sentiment} module from importing it.
+
+\textbf{Remove-a-reason faithfulness} (\code{explain/faithfulness.py}): for each cited
+aspect $a$ of item $i$, delete the $(i,a)$ sentiment rows, rebuild $\Ahat$, and
+re-propagate the model's \emph{frozen} embeddings (only structure changes). Record
+$|\Delta\text{score}| = |\text{score}' - \text{score}|$ and whether $a$'s
+\code{has\_aspect} contribution collapses. Then
+\[
+\text{faithfulness} = \frac{\#\{\text{reasons with } |\Delta\text{score}| > \varepsilon \text{ or contribution collapse}\}}{\#\text{cited reasons}},
+\qquad
+\text{grounding} = \frac{|\text{cited} \cap \text{real}|}{|\text{cited}|}.
+\]
+On a connected graph an honest explanation scores faithfulness $=1.0$; an ungrounded blurb
+cites no real aspect, so its grounding $=0$.
+
+\section{Results (seed 2020, official split)}
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+model & Recall@10 & Recall@20 & NDCG@10 & NDCG@20 \\
+\midrule
+Pop      & 0.0050 & 0.0071 & 0.0032 & 0.0039 \\
+BPR      & 0.0073 & 0.0111 & 0.0049 & 0.0060 \\
+NGCF     & 0.0075 & 0.0135 & 0.0049 & 0.0067 \\
+LightGCN & 0.0079 & 0.0131 & 0.0047 & 0.0063 \\
+\textbf{STHGRec} (no-sentiment sanity) & \textbf{0.0094} & \textbf{0.0142} & \textbf{0.0056} & \textbf{0.0071} \\
+\bottomrule
+\end{tabular}
+\end{center}
+Ordering is sane (LightGCN $\ge$ NGCF $\ge$ BPR $\ge$ Pop). The whole benchmark runs
+$\sim$10$\times$ lower than pre-correction random-resplit numbers --- expected, the
+temporal split is harder. The STHGRec row is a \textbf{sanity run with the sentiment layer
+empty} (the full ABSA output is still being generated); it is not the headline number, and
+the $-$sentiment / $-$trust / $-$both ablation rows are still to come.
+
+\section{CPU vs GPU}
+\begin{titems}
+\item \textbf{ABSA is the long pole.} \code{FAST\_LCF\_ATEPC} runs $\approx$9 reviews/s on
+      this Mac (Apple MPS-assisted); 748K reviews $\approx$ 16--20\,h wall-clock,
+      checkpointed and resumable. A CUDA GPU is roughly $10$--$50\times$ faster
+      ($\sim$1--2\,h). Run the full ABSA pass on a CUDA box.
+\item \textbf{ST-HGRec is forced CPU.} Apple MPS has no sparse-tensor kernels, so
+      \code{torch.sparse.mm} propagation cannot run there; \code{configs/sthgrec.yaml}
+      pins \code{device: cpu}. A full CPU training run is a few hours; a CUDA GPU would cut
+      it to minutes, but sparse \code{spmm} determinism must be re-verified there before
+      reporting a headline number (CPU \code{torch.sparse.mm} is deterministic and passes
+      the seed-stability bar today).
+\item \textbf{Not memory-bound.} Embedding table $\approx$15\,MB; all sparse adjacencies
+      $<$1\,GB. The constraint is compute / kernel availability, not RAM --- a modest CUDA
+      card suffices.
+\item \textbf{Baselines} (RecBole LightGCN/NGCF): hours on CPU, minutes on GPU; numbers are
+      split-deterministic either way.
+\end{titems}
+
+\section{Reproducibility spine}
+Two pinned requirements files; \code{seed 2020} for RecBole, the negative sampler, and
+NumPy; sorted ID maps remove dict-iteration nondeterminism; the ID-map JSON is committed
+and asserted-equal on load; every metric row traces to a \code{configs/*.yaml}. Heavy
+regenerable artifacts (\code{*.gpickle}, processed data, raw parquet) are git-ignored ---
+only code, configs, and small result tables/figures are tracked.
+
+\end{document}

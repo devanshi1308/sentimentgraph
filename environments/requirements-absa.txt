@@ -6,3 +6,15 @@ torch==2.3.1
 transformers==4.57.6
 update-checker==1.0.0
 metric-visualizer==0.8.8
+
+# Tokenizer runtime deps for the FAST_LCF_ATEPC (DeBERTa-v2 / SentencePiece)
+# checkpoint. pyabsa declares only `transformers>=4.18.0` with no upper bound, so
+# uv resolves a modern transformers whose DeBERTa-v2 slow->fast tokenizer
+# conversion hard-requires both of these; without them `ATEPC.AspectExtractor`
+# dies at model load (`vocab_file is None` -> AttributeError, then a protobuf
+# ImportError). Found in P2 when the full ABSA run first launched. See fixes.md #11.
+sentencepiece==0.2.2
+protobuf==7.36.1
+# spaCy English model pyabsa uses to parse the syntax tree; not on PyPI as a
+# normal package — install with: python -m spacy download en_core_web_sm
+# (or: uv pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl)

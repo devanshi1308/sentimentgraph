@@ -370,6 +370,50 @@ Scheduled for Phase P1/P2 alongside sentiment work.
 
 ---
 
+## 🟠 11b. ABSA env cannot load the ATEPC model — missing tokenizer deps (found P2)
+
+> **STATUS: ✅ CODE-RESOLVED (P2)** — `sentencepiece==0.2.2` + `protobuf==7.36.1`
+> pinned in `requirements-absa.txt`; `en_core_web_sm` install documented inline.
+> Verified: `ATEPC.AspectExtractor("multilingual")` loads and predicts
+> (`"gameplay"→Positive`, `"price"→Negative` on the smoke sentence). Full 748K-review
+> run launched on this box (MPS, checkpointed). **Coverage/quality acceptance lands
+> when the run completes.**
+
+**Where:** `environments/requirements-absa.txt`; `src/sentiment/run_absa.py`
+(`ATEPC.AspectExtractor("multilingual", ...)`).
+
+**What happened.** When the full ABSA run first launched in P2 it crashed at model
+load, before processing a single review:
+`'NoneType' object has no attribute 'endswith'` in
+`transformers/convert_slow_tokenizer.py`, then
+`ImportError: ... requires the protobuf library`. Root cause: pyabsa 2.4.2 declares
+only `transformers>=4.18.0` (no upper bound), so uv resolved a modern transformers
+whose DeBERTa-v2 slow→fast tokenizer conversion hard-requires **`sentencepiece`**
+(without it the slow tokenizer's `vocab_file` is `None`) **and `protobuf`**. Neither
+is in pyabsa's dependency tree; both were absent from the pinned env. pyabsa's own
+startup banner even warns "downgrade transformers<=4.29.0" — same
+new-library-vs-old-package trap as fix #2 (RecBole-GNN), but on the ABSA side.
+A third dep, the spaCy model `en_core_web_sm`, is auto-downloaded by pyabsa on
+first predict — fine interactively, but it must be installed explicitly for a
+clean/offline build.
+
+**Why it matters.** PRD §5 acceptance: both requirements files install clean and the
+scripts run. As pinned before this fix, the absa env only worked on machines where
+`sentencepiece`/`protobuf` arrived by some other route.
+
+**Fix (applied).**
+1. Pin `sentencepiece==0.2.2` and `protobuf==7.36.1` in `requirements-absa.txt`.
+2. Document the `en_core_web_sm` install (`python -m spacy download en_core_web_sm`).
+3. Consider capping the transformers pin to the pyabsa-tested range
+   (`<=4.29.x`) if any tokenizer-behaviour drift shows up in the coverage report —
+   the current combo *works* but is outside pyabsa's tested envelope.
+
+**Acceptance.** Fresh `uv` install of `requirements-absa.txt` +
+`python -m src.sentiment.run_absa` reaches steady-state batching without a load
+error; `absa_full.csv` grows with `user_id,item_id,aspect,sentiment` rows.
+
+---
+
 ## Suggested order of work
 
 1. **#3** wire `build_graph` → `absa_full.csv` (quick, unblocks the real graph).
