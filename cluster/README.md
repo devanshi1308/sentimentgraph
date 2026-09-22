@@ -52,6 +52,25 @@ verified against this cluster's actual PBS config.
 
 ## Path B — Altair Access web portal only (no SSH)
 
+### Path B1 — Jupyter notebook (recommended if you only have the portal)
+
+`sthgrec_pipeline.ipynb` runs the whole pipeline as notebook cells instead of
+Shell Script jobs — easier to watch, debug, and rerun one stage at a time:
+
+1. **Applications → Jupyter** (Container Image `pytorch_pbs:23.06-py3`,
+   GPUs per Node `1`). Submit, wait for Running, open via **Custom Actions →
+   Show Jupyter URL**.
+2. In Jupyter's file browser: **Upload** → select `cluster/sthgrec_pipeline.ipynb`
+   from your local clone of this repo → open it.
+3. Edit the `CLUSTER_USER = "CHANGE_ME"` cell near the top to your Altair
+   Access username, then **Run → Run All Cells** (or run them one at a time —
+   each stage is its own cell/section, so you can stop and resume).
+4. The last cell prints where results landed under
+   `/data/<you>/st-hgrec-results/<run-id>/` — download that folder from the
+   **Files** tab when done.
+
+### Path B2 — Shell Script jobs (no interactive session needed)
+
 1. Log in at `https://10.126.1.10:4443`.
 2. Get the repo onto cluster storage: submit a throwaway **Jupyter** job
    (any container, e.g. `pytorch_pbs:23.06-py3`), open its terminal, and

@@ -234,12 +234,16 @@ the $-$sentiment / $-$trust / $-$both ablation rows are still to come.
       this Mac (Apple MPS-assisted); 748K reviews $\approx$ 16--20\,h wall-clock,
       checkpointed and resumable. A CUDA GPU is roughly $10$--$50\times$ faster
       ($\sim$1--2\,h). Run the full ABSA pass on a CUDA box.
-\item \textbf{ST-HGRec is forced CPU.} Apple MPS has no sparse-tensor kernels, so
-      \code{torch.sparse.mm} propagation cannot run there; \code{configs/sthgrec.yaml}
-      pins \code{device: cpu}. A full CPU training run is a few hours; a CUDA GPU would cut
-      it to minutes, but sparse \code{spmm} determinism must be re-verified there before
-      reporting a headline number (CPU \code{torch.sparse.mm} is deterministic and passes
-      the seed-stability bar today).
+\item \textbf{ST-HGRec runs on CUDA or CPU.} \code{configs/sthgrec.yaml} sets
+      \code{use\_gpu: true}; the per-relation sparse adjacencies are moved onto the model
+      device and \code{torch.sparse.mm} propagates there. Apple MPS has no sparse-tensor
+      kernels, so on a Mac \code{run\_sthgrec.py} auto-falls-back to \code{device: cpu}.
+      A full CPU training run is a few hours; a CUDA GPU cuts it to minutes. Determinism
+      is expected on CUDA --- the adjacencies are frozen buffers, so the only \code{spmm}
+      backward path is another structured \code{spmm} --- but verify per-GPU with
+      \code{run\_sthgrec --check-determinism} before reporting a headline number
+      (CPU \code{torch.sparse.mm} is deterministic and passes the bar today). See
+      \code{GPU.md}.
 \item \textbf{Not memory-bound.} Embedding table $\approx$15\,MB; all sparse adjacencies
       $<$1\,GB. The constraint is compute / kernel availability, not RAM --- a modest CUDA
       card suffices.
