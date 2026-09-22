@@ -1,0 +1,13 @@
+#!/bin/bash
+# PBS wrapper for cluster/02_absa.sh. Submit via cluster/submit_all.sh, or
+# standalone (after 01 has produced data/processed/):
+#   qsub -v CLUSTER_USER=yourname,RUN_ID=myrun cluster/02_absa.pbs
+# Confirm -q / ngpus syntax with the cluster admin.
+#PBS -N sthgrec_02_absa
+#PBS -q workq
+#PBS -l select=1:ncpus=4:ngpus=1:mem=32gb
+#PBS -j oe
+
+set -euo pipefail
+cd "/data/${CLUSTER_USER}/sentimentgraph"
+bash cluster/02_absa.sh

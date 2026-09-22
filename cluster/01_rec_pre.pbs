@@ -1,0 +1,14 @@
+#!/bin/bash
+# PBS wrapper for cluster/01_rec_pre.sh. Submit via cluster/submit_all.sh
+# (which sets CLUSTER_USER/RUN_ID and chains all three stages), or standalone:
+#   qsub -v CLUSTER_USER=yourname,RUN_ID=myrun cluster/01_rec_pre.pbs
+# Confirm the queue name (-q) with the cluster admin — "workq" is the
+# Altair Access web-form default shown in the SVKM user manual, not verified.
+#PBS -N sthgrec_01_rec_pre
+#PBS -q workq
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -j oe
+
+set -euo pipefail
+cd "/data/${CLUSTER_USER}/sentimentgraph"
+bash cluster/01_rec_pre.sh

@@ -16,6 +16,7 @@ best-in-class.
 | `STHGREC_DESIGN.md` | ST-HGRec model design (signed sentiment, trust-4A, ablations, explanation hooks) |
 | `HARNESS_DECISION.md` | Why vanilla RecBole + pure-Python PyG (RecBole-GNN dropped) |
 | `GPU.md` | Running baselines / ABSA / ST-HGRec on CUDA (PyTorch stack; MPS falls back to CPU) |
+| `cluster/README.md` | Running the full pipeline on the SVKM AI/ML cluster (Altair Access / PBS) |
 | `fixes.md` | PRD-conformance issue tracker with resolution evidence |
 | `IMPLEMENTATION_PROMPT.md` | Multi-agent orchestration brief that drove the build |
 
