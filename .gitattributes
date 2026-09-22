@@ -1,0 +1,13 @@
+# Normalize line endings so the repo behaves the same after a Windows clone
+# (CRLF) as it does on macOS/Linux (LF) — avoids bogus whole-file diffs and
+# keeps checked-in scripts/configs byte-stable across platforms.
+* text=auto eol=lf
+
+# Binary / generated artifacts — never touch line endings.
+*.parquet binary
+*.pt binary
+*.pth binary
+*.ckpt binary
+*.pdf binary
+*.png binary
+*.docx binary

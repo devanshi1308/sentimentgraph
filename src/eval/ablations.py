@@ -47,7 +47,7 @@ from recbole.data import create_dataset, data_preparation
 from recbole.trainer import Trainer
 from recbole.utils import init_seed, init_logger
 
-from src.eval.run_sthgrec import load_config, build_model, _CUSTOM_KEYS
+from src.eval.run_sthgrec import load_config, build_model, resolve_device, _CUSTOM_KEYS
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = REPO_ROOT / "configs" / "sthgrec.yaml"
@@ -198,6 +198,7 @@ def run_variant(
     # Step 3 — re-seed before each variant build for row-level reproducibility.
     init_seed(config["seed"], config["reproducibility"])
     init_logger(config)
+    resolve_device(config)  # MPS -> cpu guard; keep every variant on one device
 
     # Steps 4-5 — dataset + model.
     dataset = create_dataset(config)

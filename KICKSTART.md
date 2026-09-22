@@ -36,7 +36,7 @@ threats-to-validity section.
 
 ```bash
 python -m venv env-rec
-source env-rec/bin/activate          # Windows: env-rec\Scripts\activate
+source env-rec/bin/activate          # Windows PowerShell: env-rec\Scripts\Activate.ps1 (cmd.exe: env-rec\Scripts\activate.bat)
 pip install -r environments/requirements-rec.txt
 deactivate
 ```
@@ -45,7 +45,7 @@ deactivate
 
 ```bash
 python -m venv env-absa
-source env-absa/bin/activate          # Windows: env-absa\Scripts\activate
+source env-absa/bin/activate          # Windows PowerShell: env-absa\Scripts\Activate.ps1 (cmd.exe: env-absa\Scripts\activate.bat)
 pip install -r environments/requirements-absa.txt
 deactivate
 ```
@@ -66,7 +66,7 @@ Source: `huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023`
 Configs: `raw_review_Video_Games`, `raw_meta_Video_Games`.
 
 ```bash
-source env-rec/bin/activate
+source env-rec/bin/activate        # Windows: env-rec\Scripts\Activate.ps1
 python -m src.data.download        # pulls HF parquet configs -> data/raw/
 ```
 
@@ -88,7 +88,7 @@ Games (≈2.55M reviews over ≈116K items). See `notebooks/01_explore_video_gam
 ## 3. Build the RecBole atomic files
 
 ```bash
-source env-rec/bin/activate
+source env-rec/bin/activate        # Windows: env-rec\Scripts\Activate.ps1
 python -m src.data.build_atomic    # 5-core split -> data/processed/video_games/*.{inter,item,user}
 ```
 
@@ -105,7 +105,7 @@ official 5-core split.
 ## 4. Run the first baselines
 
 ```bash
-source env-rec/bin/activate
+source env-rec/bin/activate        # Windows: env-rec\Scripts\Activate.ps1
 python -m src.eval.run_baselines --config configs/popularity.yaml
 python -m src.eval.run_baselines --config configs/bpr.yaml
 ```
@@ -124,7 +124,7 @@ written to `results/baselines/`.
 ## 5. Sentiment sanity check (ABSA env)
 
 ```bash
-source env-absa/bin/activate
+source env-absa/bin/activate       # Windows: env-absa\Scripts\Activate.ps1
 python -m src.sentiment.run_absa   # PyABSA on ~300 reviews -> aspect/sentiment table
 ```
 
@@ -137,7 +137,7 @@ Fix the aspect list in `src/sentiment/aspects.py`, then eyeball ~20 outputs.
 ## 6. Add the GNN baselines
 
 ```bash
-source env-rec/bin/activate
+source env-rec/bin/activate        # Windows: env-rec\Scripts\Activate.ps1
 python -m src.eval.run_baselines --config configs/lightgcn.yaml
 python -m src.eval.run_baselines --config configs/ngcf.yaml
 ```
@@ -170,7 +170,8 @@ RecBole / RecBole-GNN harness.
 ## When you're stuck
 
 - Dataset loading errors → try the direct Parquet path / pre-made splits first.
-- Dependency conflicts → confirm you're in the right venv (`which python`); never
-  mix the two envs.
+- Dependency conflicts → confirm you're in the right venv (`which python` on
+  macOS/Linux, `where python` or `Get-Command python` on Windows); never mix
+  the two envs.
 - Anything about category / env split / harness / first-number sanity → ping
   Muaaz before changing it; those are expensive to reverse.

@@ -21,6 +21,9 @@ uv pip install pytest              # test runner only; not a pinned runtime dep
 python -c "import torch, recbole, torch_geometric, pandas; print('test deps OK')"
 ```
 
+Windows (PowerShell): `env-rec\Scripts\Activate.ps1` instead of `source ... activate`;
+everything else on this page (`python -m pytest ...`) is identical.
+
 If `torch_geometric` fails to import: your env predates the P4 pins — rebuild it
 (`P2_RUNBOOK.md` step 1). Never run tests from the absa env — they import the
 recommender side.
@@ -131,6 +134,8 @@ git status --short                             # only code/docs/results-tables c
 
 # 3. No accidental big file (largest tracked file should be ~KB-scale)
 git ls-files -z | xargs -0 du -k 2>/dev/null | sort -rn | head -3
+# Windows (PowerShell), same check:
+#   git ls-files | ForEach-Object { Get-Item $_ } | Sort-Object Length -Descending | Select-Object -First 3 FullName, Length
 
 # 4. Up to date with the remote before you push
 git pull --rebase origin devanshi

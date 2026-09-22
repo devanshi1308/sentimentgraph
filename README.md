@@ -15,6 +15,7 @@ best-in-class.
 | `P2_RUNBOOK.md` | Step-by-step artifact regeneration on the corrected data spine |
 | `STHGREC_DESIGN.md` | ST-HGRec model design (signed sentiment, trust-4A, ablations, explanation hooks) |
 | `HARNESS_DECISION.md` | Why vanilla RecBole + pure-Python PyG (RecBole-GNN dropped) |
+| `GPU.md` | Running baselines / ABSA / ST-HGRec on CUDA (PyTorch stack; MPS falls back to CPU) |
 | `fixes.md` | PRD-conformance issue tracker with resolution evidence |
 | `IMPLEMENTATION_PROMPT.md` | Multi-agent orchestration brief that drove the build |
 
@@ -32,6 +33,9 @@ files in `data/`. Both requirements files are fully pinned and resolve clean.
 uv venv env-rec --python 3.11 && source env-rec/bin/activate
 uv pip install -r environments/requirements-rec.txt
 ```
+
+Windows (PowerShell): `uv venv env-rec --python 3.11 ; env-rec\Scripts\Activate.ps1`,
+then the same `uv pip install`. See `GPU.md` §1 for the full pair of envs.
 
 ## Pipeline (data → numbers)
 
@@ -52,6 +56,10 @@ ablations.py ──► results/ablations/summary.csv (full / −sentiment / −t
 Every number traces to a `configs/*.yaml` + seed 2020. Heavy artifacts
 (`data/processed/`, `data/interim/*.csv`, `*.gpickle`) are gitignored and
 regenerate from code + config + seed.
+
+**GPU:** all stages run on CUDA — see `GPU.md`. Configs default to `use_gpu: true`
+and degrade to CPU when no CUDA device is visible. Apple MPS is not supported for
+ST-HGRec (no sparse kernels); `run_sthgrec.py` forces CPU there.
 
 ## ST-HGRec
 

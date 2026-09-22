@@ -97,9 +97,12 @@ def _propagate(model, gt) -> torch.Tensor:
     all_emb = model.get_ego_embeddings()
     emb_list = [all_emb]
 
-    adj_int = gt.adj_interacts.coalesce().to(all_emb.dtype)
-    adj_sent = gt.adj_sentiment.coalesce().to(all_emb.dtype) if gt.adj_sentiment is not None else None
-    adj_asp = gt.adj_has_aspect.coalesce().to(all_emb.dtype) if gt.adj_has_aspect is not None else None
+    # Match the model's device *and* dtype — ``gt`` adjacencies are built on CPU
+    # but the model (and its ego embeddings) may live on CUDA.
+    _cast = dict(device=all_emb.device, dtype=all_emb.dtype)
+    adj_int = gt.adj_interacts.coalesce().to(**_cast)
+    adj_sent = gt.adj_sentiment.coalesce().to(**_cast) if gt.adj_sentiment is not None else None
+    adj_asp = gt.adj_has_aspect.coalesce().to(**_cast) if gt.adj_has_aspect is not None else None
 
     for _ in range(model.n_layers):
         agg = torch.sparse.mm(adj_int, all_emb)

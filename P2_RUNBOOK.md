@@ -37,6 +37,15 @@ mv results/baselines/summary.csv results/baselines/summary_randomsplit_archive.c
 rm -f data/processed/video_games/graph.gpickle data/interim/absa_sample.csv
 ```
 
+Windows (PowerShell) equivalent:
+
+```powershell
+Remove-Item -ErrorAction SilentlyContinue data/processed/video_games/video_games.inter
+Remove-Item -ErrorAction SilentlyContinue data/interim/absa_full.csv, data/interim/absa_full_progress.txt
+Move-Item -ErrorAction SilentlyContinue results/baselines/summary.csv results/baselines/summary_randomsplit_archive.csv
+Remove-Item -ErrorAction SilentlyContinue data/processed/video_games/graph.gpickle, data/interim/absa_sample.csv
+```
+
 Note: `data/processed/`, `data/interim/*.csv|*.txt`, and `*.gpickle` are now
 **gitignored** — never `git add -f` any of them. The only artifact you'll commit at the
 end is `results/baselines/summary.csv` (and small figures).
@@ -64,18 +73,40 @@ python -c "import pyabsa, pyarrow, update_checker, pandas; print('absa env OK')"
 deactivate
 ```
 
+Windows (PowerShell) — same steps, `rm -rf` -> `Remove-Item -Recurse -Force`,
+`source .../activate` -> `.../Activate.ps1`:
+
+```powershell
+# rec env
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue env-rec
+uv venv env-rec --python 3.11
+env-rec\Scripts\Activate.ps1
+uv pip install -r environments/requirements-rec.txt
+python -c "import recbole, matplotlib, httpx, pyarrow, networkx, pandas; print('rec env OK')"
+deactivate
+
+# absa env (separate — never mix)
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue env-absa
+uv venv env-absa --python 3.11
+env-absa\Scripts\Activate.ps1
+uv pip install -r environments/requirements-absa.txt
+python -c "import pyabsa, pyarrow, update_checker, pandas; print('absa env OK')"
+deactivate
+```
+
 **Acceptance:** both `OK` lines print. If a resolver conflict appears, capture the full
 error and ping Muaaz — do not hand-upgrade pins.
 
-*(If `uv` isn't installed: `curl -LsSf https://astral.sh/uv/install.sh | sh`, or use
-`python3.11 -m venv` + `pip install` equivalently.)*
+*(If `uv` isn't installed: macOS/Linux — `curl -LsSf https://astral.sh/uv/install.sh | sh`;
+Windows — `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`; or use
+`python3.11 -m venv` + `pip install` equivalently on either OS.)*
 
 ---
 
 ## 2. Raw data  (skip if `data/raw/` already populated; else 30–60 min)
 
 ```bash
-source env-rec/bin/activate
+source env-rec/bin/activate   # Windows: env-rec\Scripts\Activate.ps1
 python -m src.data.download
 ```
 
@@ -103,6 +134,19 @@ plus `.item`/`.user` built from the union of all splits.
 for s in train valid test; do
   echo "$s: official=$(($(wc -l < data/raw/Video_Games.$s.csv)-1))  atomic=$(($(wc -l < data/processed/video_games/video_games.$s.inter)-1))"
 done
+```
+
+Cross-platform (works identically on macOS/Linux/Windows — run it instead of
+the bash loop above if you're not in bash):
+
+```bash
+python -c "
+from pathlib import Path
+for s in ('train', 'valid', 'test'):
+    official = sum(1 for _ in open(f'data/raw/Video_Games.{s}.csv', encoding='utf-8')) - 1
+    atomic = sum(1 for _ in open(f'data/processed/video_games/video_games.{s}.inter', encoding='utf-8')) - 1
+    print(f'{s}: official={official}  atomic={atomic}')
+"
 ```
 
 Every pair must match ±0. Record the three numbers in your report-back.
@@ -134,6 +178,8 @@ python -m src.data.trust_signals
 deactivate
 ```
 
+(still in the rec env activated in step 1 — Windows: `env-rec\Scripts\Activate.ps1`)
+
 **Acceptance:** `data/interim/trust_signals.csv` exists; the printed population is the
 **train-split** user count; top/bottom-10 tables + describe() look sane (trust_score in
 (0,1), no NaN). Save the printout.
@@ -143,13 +189,16 @@ deactivate
 ## 6. Full ABSA run  (absa env — the long one: hours on GPU, days on CPU)
 
 ```bash
-source env-absa/bin/activate
+source env-absa/bin/activate   # Windows: env-absa\Scripts\Activate.ps1
 python -m src.sentiment.run_absa
 ```
 
 Batched + checkpointed: safe to interrupt and re-run (it resumes from
 `data/interim/absa_full_progress.txt` — which you deleted in step 0, so it starts
-clean against the new train population). Run it in `tmux`/`screen` or with `nohup`.
+clean against the new train population). Run it in `tmux`/`screen` or with `nohup`
+on macOS/Linux; on Windows just leave the terminal (or Windows Terminal tab) open,
+or launch it detached with
+`Start-Process powershell -ArgumentList '-NoExit','-Command','python -m src.sentiment.run_absa'`.
 
 **Acceptance:** completes over the full train-population review set;
 `data/interim/absa_full.csv` has columns `user_id,item_id,aspect,sentiment`.
@@ -173,7 +222,7 @@ vocabulary curation pass, and per-canonical balance feeds the paper.
 ## 8. Build the graph  (rec env, ~10–20 min)
 
 ```bash
-source env-rec/bin/activate
+source env-rec/bin/activate   # Windows: env-rec\Scripts\Activate.ps1
 python -m src.graph.build_graph
 ```
 

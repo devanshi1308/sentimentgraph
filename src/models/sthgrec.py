@@ -90,13 +90,22 @@ class STHGRec(GeneralRecommender):
         )
 
         # --- normalized adjacencies (built off-graph; registered as buffers) ---
-        self.register_buffer("adj_interacts", graph_tensors.adj_interacts.coalesce())
+        # Built on CPU by ``graph_tensors`` (numpy/pandas), then moved onto the
+        # model device here so ``torch.sparse.mm`` in ``forward`` runs where the
+        # embeddings live. CUDA has full sparse-COO spmm kernels; Apple MPS does
+        # not, so ``run_sthgrec`` forces ``device: cpu`` on MPS hosts before we
+        # get here. ``.coalesce()`` after ``.to()`` because a device transfer can
+        # drop the coalesced flag.
+        def _to_dev(t: torch.Tensor) -> torch.Tensor:
+            return t.coalesce().to(self.device).coalesce()
+
+        self.register_buffer("adj_interacts", _to_dev(graph_tensors.adj_interacts))
         self._has_sentiment = self.use_sentiment_edges and graph_tensors.adj_sentiment is not None
         self._has_aspect = self.use_sentiment_edges and graph_tensors.adj_has_aspect is not None
         if self._has_sentiment:
-            self.register_buffer("adj_sentiment", graph_tensors.adj_sentiment.coalesce())
+            self.register_buffer("adj_sentiment", _to_dev(graph_tensors.adj_sentiment))
         if self._has_aspect:
-            self.register_buffer("adj_has_aspect", graph_tensors.adj_has_aspect.coalesce())
+            self.register_buffer("adj_has_aspect", _to_dev(graph_tensors.adj_has_aspect))
 
         # --- RecBole-id translation layer (STHGREC_DESIGN.md §5 id contract) ---
         self._build_recbole_translation(dataset, id_maps)

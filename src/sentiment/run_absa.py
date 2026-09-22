@@ -23,6 +23,7 @@ file. See fixes.md #6 for the rationale and project-lead decision.
 import update_checker
 update_checker.UpdateChecker.check = lambda self, *args, **kwargs: None
 
+import argparse
 from pathlib import Path
 
 import pandas as pd
@@ -34,7 +35,10 @@ INTER_PATH = REPO_ROOT / "data" / "processed" / "video_games" / "video_games.tra
 OUTPUT_PATH = REPO_ROOT / "data" / "interim" / "absa_full.csv"
 CHECKPOINT_PATH = REPO_ROOT / "data" / "interim" / "absa_full_progress.txt"
 
-BATCH_SIZE = 32
+# Outer chunk size = how many reviews are processed between checkpoint writes.
+# PyABSA batches internally on top of this. 32 is a safe CPU default; on a CUDA
+# box bump it (e.g. --batch-size 256) so checkpointing overhead is amortised.
+DEFAULT_BATCH_SIZE = 32
 
 
 def load_graph_users() -> set:
@@ -63,14 +67,14 @@ def save_checkpoint(index: int) -> None:
     CHECKPOINT_PATH.write_text(str(index))
 
 
-def run_absa_batched(reviews: pd.DataFrame, extractor) -> None:
+def run_absa_batched(reviews: pd.DataFrame, extractor, batch_size: int = DEFAULT_BATCH_SIZE) -> None:
     start = get_start_index()
     print(f"Resuming from row {start:,} / {len(reviews):,}")
 
     write_header = not OUTPUT_PATH.exists() or start == 0
 
-    for batch_start in range(start, len(reviews), BATCH_SIZE):
-        batch = reviews.iloc[batch_start:batch_start + BATCH_SIZE]
+    for batch_start in range(start, len(reviews), batch_size):
+        batch = reviews.iloc[batch_start:batch_start + batch_size]
         texts = batch["text"].tolist()
 
         results = extractor.predict(texts, print_result=False)
@@ -95,13 +99,34 @@ def run_absa_batched(reviews: pd.DataFrame, extractor) -> None:
             )
             write_header = False
 
-        save_checkpoint(batch_start + BATCH_SIZE)
+        save_checkpoint(batch_start + batch_size)
 
-        if batch_start % (BATCH_SIZE * 50) == 0:
+        if batch_start % (batch_size * 50) == 0:
             print(f"  ...processed {batch_start:,} / {len(reviews):,} reviews")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Full-scale PyABSA extraction (checkpointed).")
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help=(
+            "auto (let PyABSA pick CUDA if present), cpu, cuda, cuda:N, or "
+            "allcuda (all visible GPUs). Default: auto."
+        ),
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help=f"Reviews per checkpoint chunk (default: {DEFAULT_BATCH_SIZE}; use ~256 on GPU).",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+
     print("Loading graph users...")
     users = load_graph_users()
 
@@ -109,11 +134,14 @@ def main() -> None:
     reviews = load_target_reviews(users)
     print(f"  {len(reviews):,} reviews to process")
 
-    print("Loading PyABSA model...")
-    extractor = ATEPC.AspectExtractor("multilingual", auto_device=True)
+    # PyABSA's `auto_device`: True = auto-pick (CUDA when available), or an
+    # explicit device string ("cpu", "cuda:0", "allcuda", ...).
+    auto_device = True if args.device == "auto" else args.device
+    print(f"Loading PyABSA model (device={args.device})...")
+    extractor = ATEPC.AspectExtractor("multilingual", auto_device=auto_device)
 
-    print("Running batched extraction (checkpointed — safe to interrupt/resume)...")
-    run_absa_batched(reviews, extractor)
+    print(f"Running batched extraction (batch_size={args.batch_size}, checkpointed)...")
+    run_absa_batched(reviews, extractor, batch_size=args.batch_size)
 
     print(f"\nDone. Results in {OUTPUT_PATH}")
 

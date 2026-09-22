@@ -19,9 +19,11 @@ Usage:
 """
 
 import argparse
+import logging
 from pathlib import Path
 
 import pandas as pd
+import torch
 import yaml
 from recbole.config import Config
 from recbole.data import create_dataset, data_preparation
@@ -53,7 +55,77 @@ _CUSTOM_KEYS = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="configs/sthgrec.yaml")
+    parser.add_argument(
+        "--check-determinism",
+        action="store_true",
+        help=(
+            "Build the model and run two seeded forward+backward passes on the "
+            "resolved device, asserting bit-identical embeddings and gradients. "
+            "Run this once on a new GPU before trusting a headline number."
+        ),
+    )
     return parser.parse_args()
+
+
+def resolve_device(config) -> torch.device:
+    """Resolve (and, for MPS, override) the training device.
+
+    RecBole's ``_init_device`` already downgrades ``cuda`` -> ``cpu`` when no
+    CUDA device is visible. It never selects Apple MPS, but a YAML could set
+    ``device: mps`` directly -- and ST-HGRec's ``torch.sparse.mm`` propagation
+    has no MPS kernel, so we force CPU there with a loud warning. The resolved
+    device is written back into ``config`` so the Trainer and ``.to(...)`` calls
+    all agree.
+    """
+    dev = config["device"]
+    if not isinstance(dev, torch.device):
+        dev = torch.device(dev)
+
+    if dev.type == "mps":
+        logging.getLogger().warning(
+            "device 'mps' requested but Apple MPS has no sparse-tensor kernels; "
+            "ST-HGRec propagation would crash. Falling back to device: cpu. "
+            "Use a CUDA host for GPU acceleration."
+        )
+        dev = torch.device("cpu")
+    elif dev.type == "cuda" and not torch.cuda.is_available():
+        logging.getLogger().warning("device 'cuda' requested but unavailable; using cpu.")
+        dev = torch.device("cpu")
+
+    config["device"] = dev
+    return dev
+
+
+def check_determinism(config, dataset) -> None:
+    """Two seeded forward+backward passes must match bit-for-bit on this device."""
+
+    def _one_pass():
+        init_seed(config["seed"], config["reproducibility"])
+        model, _ = build_model(config, dataset)
+        model.train()
+        emb = model.forward()
+        # A fixed, structure-touching scalar loss so the spmm backward runs.
+        loss = (emb * emb).sum()
+        loss.backward()
+        grad = model.embedding.weight.grad.detach().clone()
+        return emb.detach().clone(), grad
+
+    emb_a, grad_a = _one_pass()
+    emb_b, grad_b = _one_pass()
+
+    emb_ok = torch.equal(emb_a, emb_b)
+    grad_ok = torch.equal(grad_a, grad_b)
+    dev = config["device"]
+    print(f"=== determinism check on {dev} ===")
+    print(f"  forward embeddings identical : {emb_ok}")
+    print(f"  backward gradients identical : {grad_ok}")
+    if emb_ok and grad_ok:
+        print("  PASS - seeded runs are bit-stable on this device.")
+    else:
+        max_e = (emb_a - emb_b).abs().max().item()
+        max_g = (grad_a - grad_b).abs().max().item()
+        print(f"  FAIL - max |Δemb|={max_e:.3e}, max |Δgrad|={max_g:.3e}")
+        raise SystemExit(1)
 
 
 def _resolve(path_str, default: Path) -> Path:
@@ -160,8 +232,15 @@ def main() -> None:
     init_seed(config["seed"], config["reproducibility"])
     init_logger(config)
 
+    device = resolve_device(config)
+    logging.getLogger().info(f"ST-HGRec device: {device}")
+
     dataset = create_dataset(config)
     train_data, valid_data, test_data = data_preparation(config, dataset)
+
+    if args.check_determinism:
+        check_determinism(config, train_data.dataset)
+        return
 
     model, _ = build_model(config, train_data.dataset)
 

@@ -95,9 +95,13 @@ it — it is a pure-Python `py3-none-any` wheel (zero install cost, uv-clean), a
 per-aspect-relation extension. Revisit only if the env is being trimmed for
 submission.
 
-Caveat carried from `e231206`: ST-HGRec runs **CPU-only** (`use_gpu: false`,
-`device: cpu` in `configs/sthgrec.yaml`) because MPS lacks sparse-tensor support;
-`torch.sparse.mm` is deterministic there, satisfying the §4 seed-stability bar.
+Device (updated 2026-09-10, see `GPU.md`): ST-HGRec now runs on **CUDA or CPU**.
+`configs/sthgrec.yaml` sets `use_gpu: true` / `gpu_id: 0`; `run_sthgrec.py` moves
+the per-relation sparse adjacencies onto the model device and forces CPU on Apple
+MPS (no sparse kernels). `torch.sparse.mm` is deterministic on CPU and expected
+deterministic on CUDA — the adjacencies are frozen buffers, so the only spmm
+backward path is another structured spmm. Verify per-GPU with
+`python -m src.eval.run_sthgrec --check-determinism` before reporting a number.
 
 ## Results (seed 2020, official 5-core split configs)
 

@@ -26,3 +26,7 @@ epochs: 300
 metrics: [Recall, NDCG]
 topk: [10, 20]
 valid_metric: NDCG@10
+
+# Device: RecBole uses CUDA when torch.cuda.is_available(), else CPU.
+use_gpu: true
+gpu_id: 0

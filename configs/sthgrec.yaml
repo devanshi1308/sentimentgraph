@@ -48,5 +48,15 @@ graph_id_map_json: data/processed/video_games/sthgrec_id_maps.json
 metrics: [Recall, NDCG]
 topk: [10, 20]
 valid_metric: NDCG@10
-use_gpu: false
-device: cpu
+
+# --- device -----------------------------------------------------------------
+# CUDA is fully supported: torch.sparse.mm has cuSPARSE spmm kernels, and the
+# three adjacencies are frozen buffers (requires_grad=False), so the only
+# backward path is a second structured spmm -> deterministic under seed 2020.
+# Verify once on your GPU with:  python -m src.eval.run_sthgrec --check-determinism
+#
+# Apple MPS is NOT supported (no sparse-tensor kernels). On a Mac, run_sthgrec.py
+# detects this and forces device: cpu automatically, so leaving use_gpu: true
+# here is safe everywhere.
+use_gpu: true
+gpu_id: 0

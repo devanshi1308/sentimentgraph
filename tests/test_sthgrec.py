@@ -621,6 +621,37 @@ def test_yaml_ablation_flags_win(tmp_path):
     )
 
 
+def test_resolve_device_mps_falls_back_to_cpu():
+    """f. DEVICE — a requested 'mps' device is overridden to cpu (no sparse kernels).
+
+    ST-HGRec's torch.sparse.mm propagation has no MPS kernel, so run_sthgrec must
+    downgrade mps -> cpu (and write the choice back into the config so the
+    Trainer and .to(...) calls agree). cuda-when-unavailable is also downgraded.
+    """
+    import torch
+    from src.eval.run_sthgrec import resolve_device
+
+    class _Cfg(dict):
+        pass
+
+    mps_cfg = _Cfg(device=torch.device("mps"))
+    assert resolve_device(mps_cfg).type == "cpu"
+    assert mps_cfg["device"].type == "cpu"  # written back
+
+    # A plain string is accepted too.
+    str_cfg = _Cfg(device="mps")
+    assert resolve_device(str_cfg).type == "cpu"
+
+    # cuda is kept iff actually available on this host.
+    cuda_cfg = _Cfg(device=torch.device("cuda"))
+    expected = "cuda" if torch.cuda.is_available() else "cpu"
+    assert resolve_device(cuda_cfg).type == expected
+
+    # cpu is untouched.
+    cpu_cfg = _Cfg(device=torch.device("cpu"))
+    assert resolve_device(cpu_cfg).type == "cpu"
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-x", "-q"]))
